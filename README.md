@@ -9,7 +9,7 @@ hours. The visible section is the next uninterrupted minute at true 1× speed.
 Every aircraft is controlled at 60 Hz; the native scoreboard is hidden so the
 traffic remains readable.
 
-[Watch the full one-minute MP4](https://raw.githubusercontent.com/vreabernardo/airport-autopilot/main/docs/control-room.mp4).
+[Watch the full one-minute MP4](https://vreabernardo.github.io/airport-autopilot/control-room.mp4).
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
