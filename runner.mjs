@@ -9,8 +9,8 @@ const gameUrl = process.env.GAME_URL || 'https://airport.apunen.com/';
 const solverPath = path.resolve(process.env.SOLVER_PATH || path.join(projectDir, 'autopilot.js'));
 const profileDir = path.resolve(process.env.PROFILE_DIR || path.join(projectDir, 'browser-profile'));
 const viewport = {
-  width: Number.parseInt(process.env.VIEWPORT_WIDTH || '1280', 10),
-  height: Number.parseInt(process.env.VIEWPORT_HEIGHT || '800', 10),
+  width: Number.parseInt(process.env.VIEWPORT_WIDTH || '552', 10),
+  height: Number.parseInt(process.env.VIEWPORT_HEIGHT || '552', 10),
 };
 
 if (!fs.existsSync(solverPath)) {
@@ -36,7 +36,7 @@ async function patchGameBundle(route) {
 
     body = body.replace(needle, 'X=window.__game=new ot,');
     await route.fulfill({ response, body });
-    log('Production game model exposed to the bundled solver.');
+    log('Production game model exposed; solver will lock optimized world bounds.');
   } catch (error) {
     log('Bundle patch failed:', error instanceof Error ? error.message : String(error));
     await route.abort('failed');

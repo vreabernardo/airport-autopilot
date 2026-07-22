@@ -9,7 +9,9 @@
     "start": "node runner.mjs",
     "start:background": "./start-runner.sh",
     "stop": "./stop-runner.sh",
-    "status": "./status-runner.sh"
+    "status": "./status-runner.sh",
+    "capture:hero": "node capture-hero.mjs",
+    "capture:decision": "node capture-decision.mjs"
   },
   "dependencies": {
     "playwright": "1.61.1"
