@@ -14,6 +14,8 @@ npm run setup
 
 ## Run
 
+Run in the foreground:
+
 ```bash
 cd ~/Personal/airport-solver-runner
 npm start
@@ -21,6 +23,22 @@ npm start
 
 Keep the terminal open. Status is printed every 15 seconds. Press `Ctrl+C` to
 stop cleanly. Closing the Chromium window also stops the runner.
+
+Or launch it in the background so closing the terminal does not stop it:
+
+```bash
+cd ~/Personal/airport-solver-runner
+npm run start:background
+```
+
+Check or stop the background runner with:
+
+```bash
+npm run status
+npm run stop
+```
+
+Background status is appended to `run.log`.
 
 The browser uses `browser-profile/`, separate from regular Chrome and other
 Playwright agents. If the game reaches game over, the window stays open for

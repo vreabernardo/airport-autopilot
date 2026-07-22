@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "setup": "playwright install chromium",
-    "start": "node runner.mjs"
+    "start": "node runner.mjs",
+    "start:background": "./start-runner.sh",
+    "stop": "./stop-runner.sh",
+    "status": "./status-runner.sh"
   },
   "dependencies": {
     "playwright": "1.61.1"
