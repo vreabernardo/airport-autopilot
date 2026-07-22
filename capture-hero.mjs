@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const execute = promisify(execFile);
-const projectDir = path.dirname(fileURLToPath(import.meta.url));
+const projectDir = process.env.PROJECT_DIR || path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(projectDir, 'docs');
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS || 2) * 60 * 60;
-const captureSeconds = Number(process.env.CAPTURE_SECONDS || 60);
+const captureSeconds = Number(process.env.CAPTURE_SECONDS || 10);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'airspace-after-two-hours-smooth.gif';
-const outputFps = Math.max(1, Math.min(15, Number(process.env.HERO_FPS) || 10));
+const outputName = process.env.HERO_OUTPUT || 'airspace-after-two-hours-fluid.gif';
+const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 15));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -65,40 +65,52 @@ try {
     }
   }
 
-  const cdp = await page.context().newCDPSession(page);
-  let capturedFrames = 0;
-  let writes = Promise.resolve();
-  cdp.on('Page.screencastFrame', event => {
-    const index = capturedFrames++;
-    writes = writes.then(() => fs.promises.writeFile(
-      path.join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`),
-      Buffer.from(event.data, 'base64'),
-    ));
-    void cdp.send('Page.screencastFrameAck', { sessionId: event.sessionId });
+  // Headless requestAnimationFrame can be heavily throttled. Freeze its update
+  // hook and advance the simulation explicitly so every encoded second contains
+  // exactly 60 controller/game ticks regardless of wall-clock capture speed.
+  const captureStart = await page.evaluate(() => {
+    const game = window.__game;
+    game.update = () => {};
+    window.__captureAircraft = game.aircraft;
+    game.aircraft = game.aircraft.filter(aircraft =>
+      aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
+    return game.elapsed;
   });
-  await cdp.send('Page.startScreencast', {
-    format: 'jpeg',
-    quality: 88,
-    maxWidth: 1200,
-    maxHeight: 675,
-    everyNthFrame: 4,
-  });
-  await page.waitForTimeout(captureSeconds * 1000);
-  await cdp.send('Page.stopScreencast');
-  await writes;
-  if (capturedFrames < captureSeconds * 10) {
-    throw new Error(`Screencast produced only ${capturedFrames} frames.`);
+  const capturedFrames = Math.round(captureSeconds * outputFps);
+  let completedSteps = 0;
+  for (let index = 0; index < capturedFrames; index++) {
+    const targetSteps = Math.round((index + 1) * 60 / outputFps);
+    const steps = targetSteps - completedSteps;
+    completedSteps = targetSteps;
+    await page.evaluate(count => {
+      const game = window.__game;
+      game.aircraft = window.__captureAircraft;
+      for (let step = 0; step < count; step++) window.__game.step(1 / 60);
+      window.__captureAircraft = game.aircraft;
+      game.aircraft = game.aircraft.filter(aircraft =>
+        aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
+    }, steps);
+    await page.waitForTimeout(16);
+    await page.screenshot({
+      path: path.join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`),
+      type: 'jpeg',
+      quality: 88,
+    });
   }
 
-  const finalState = await page.evaluate(() => window.__apStatus());
+  const finalState = await page.evaluate(() => {
+    window.__game.aircraft = window.__captureAircraft;
+    return window.__apStatus();
+  });
   if (finalState.phase !== 'playing') throw new Error(`Game over at ${finalState.elapsed.toFixed(1)} seconds.`);
+  const simulatedCaptureSeconds = finalState.elapsed - captureStart;
+  if (Math.abs(simulatedCaptureSeconds - captureSeconds) > 1 / 30) {
+    throw new Error(`Expected ${captureSeconds}s of simulation, captured ${simulatedCaptureSeconds.toFixed(3)}s.`);
+  }
   const ffmpeg = process.env.FFMPEG || 'ffmpeg';
-  // CDP emits frames at the renderer's actual cadence, which can vary between
-  // machines. Use the measured rate so the encoded minute remains one minute.
-  const sourceFps = (capturedFrames / captureSeconds).toFixed(6);
   await execute(ffmpeg, [
-    '-y', '-framerate', sourceFps, '-i', path.join(framesDir, 'frame-%04d.jpg'),
-    '-vf', `fps=${outputFps},scale=1200:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=96[p];[s1][p]paletteuse=dither=bayer`,
+    '-y', '-framerate', String(outputFps), '-i', path.join(framesDir, 'frame-%04d.jpg'),
+    '-vf', 'scale=1200:-1:flags=lanczos,hqdn3d=8:6:24:18,split[s0][s1];[s0]palettegen=max_colors=64:stats_mode=diff[p];[s1][p]paletteuse=dither=none:diff_mode=rectangle',
     '-loop', '0', path.join(outputDir, outputName),
   ]);
   fs.writeFileSync(path.join(outputDir, `${path.basename(outputName, '.gif')}.json`), `${JSON.stringify({ seed: seedValue, capturedFrames, ...finalState }, null, 2)}\n`);

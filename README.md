@@ -2,10 +2,13 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Two-hour control run at normal playback speed](docs/airspace-after-two-hours-smooth.gif)
+![Post-two-hour control run at normal playback speed](docs/airspace-after-two-hours-fluid.gif)
 
 The controller above has already operated the real simulator for two accelerated
-hours. The visible section is the next uninterrupted minute at true 1× speed.
+hours. The visible section is the next uninterrupted ten seconds at true 1×
+speed—not a timelapse. The capture renders only active aircraft so accumulated
+ground traffic cannot throttle the README animation; every controller decision
+still runs against the complete simulation state at 60 Hz.
 Every aircraft is controlled at 60 Hz; the native scoreboard is hidden so the
 traffic remains readable.
 

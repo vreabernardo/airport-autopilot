@@ -1,0 +1,12 @@
+{
+  "seed": 101,
+  "warmupSeconds": 7200.266666645817,
+  "publishedSeconds": 10,
+  "framesPerSecond": 15,
+  "publishedFrames": 150,
+  "simulationTicksPerSecond": 60,
+  "activeAircraftOnly": true,
+  "sourceCaptureSeconds": 20,
+  "sourceCaptureEnd": 7220.266666645745,
+  "phase": "playing"
+}
