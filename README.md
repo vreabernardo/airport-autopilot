@@ -1,107 +1,262 @@
-# Holding the sky
+# Airport Autopilot
 
-![Autonomous air-traffic control in the production game](docs/control-room.gif)
+**A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-The airport looks small: three runways, a few aircraft, one destination per
-colour. Draw a line from every plane to its runway and the first minute feels
-solved.
+![Two-hour control run at normal playback speed](docs/control-room.gif)
 
-Then the sky fills in.
+The controller above has already operated the real simulator for two accelerated
+hours. The visible section is the next uninterrupted minute at true 1× speed.
+Every aircraft is controlled at 60 Hz; the native scoreboard is hidden so the
+traffic remains readable.
 
-Arrivals cross departures. A safe route becomes unsafe when another aircraft
-changes its mind. New planes appear outside the map before they are visible.
-The problem is not finding a short path. It is making every path agree with
-every other path, sixty times a second, for hours.
+[Watch the full one-minute MP4](docs/control-room.mp4).
 
-This is the controller we built for that.
+This document describes how the controller evolved, why the first architecture
+was discarded, the final collision model, and the evaluator used to keep
+throughput improvements from trading away safety.
 
-> The animation is a real accelerated fifteen-minute run against the production game.
-> The native scoreboard is hidden; the clock and counters read directly from the
-> simulator. The final minutes are rendered from the actual saturated state.
+## Results
 
-## The tempting path
+| Property | Result |
+| --- | ---: |
+| Fixed evaluation runs | 5 × 20 simulated minutes |
+| Survived | 5 / 5 |
+| Mean steady-state throughput | 54.732 operations/min |
+| Worst-seed throughput | 54.066 operations/min |
+| Mean path inflation | 1.154× |
+| Composite metric | **54.534941** |
+| Longest separate validation | >5 uninterrupted simulated hours |
 
-Each aircraft already knows its runway. Pointing straight at it maximizes
-throughput and eventually causes a collision.
+An operation is one landing or departure. Evaluation discards the first five
+minutes of each run so the reported pace measures the saturated system rather
+than the empty opening state.
 
-Avoiding whatever is close now is not enough either. Two aircraft can be far
-apart and still occupy the same point a few seconds later. Once both turn away,
-their new paths can create a second conflict that did not exist when either
-decision was made.
+## 1. Getting below the interface
 
-The controller has to reason in motion.
+The game is entirely client-side. The first useful step was not better mouse
+automation; it was exposing the simulation object already driving the page.
 
-## The model
+The runner intercepts the production game bundle as Chromium loads it, attaches
+the model to `window.__game`, and installs the controller around the simulation's
+`step` method:
 
-For every airborne plane, we test 48 headings around the direct route. Each one
-becomes a velocity vector. Against every other aircraft we solve for the time
-of closest approach over the next eight seconds:
-
-```text
-t* = clamp(−(relative position · relative velocity) / |relative velocity|²)
-clearance = |relative position + relative velocity × t*| − both radii
+```js
+const originalStep = game.step;
+game.step = function stepWithController(dt) {
+  control(this);
+  return originalStep.call(this, dt);
+};
 ```
 
-The same projection runs against incoming spawn warnings before those aircraft
-enter the map. Safe headings score first; forward progress and small turns break
-the tie.
+This preserves the original map, aircraft specifications, spawn process,
+landing rules, departure queues, renderer, and assets. It changes only how paths
+are selected.
 
-![The real game with the controller's search field exposed](docs/decision-field.gif)
+The visible browser is 552 × 552 pixels. Simulation bounds are held at the
+tighter quadrilateral derived from the best 138 × 138 experiment. Rendering and
+traffic density are therefore independent: the game stays legible without
+quietly making the control problem easier.
 
-One pass would still be selfish: the last plane could invalidate the first
-plane's choice. We run four coordination passes, feeding every selected velocity
-back into the next decision. The field settles together.
+## 2. The first controller was too architectural
 
-## Commit late
+The initial version modeled runway corridors, assigned concentric holding
+orbits, merged aircraft through approach gates, maintained per-plane cooldowns,
+and carried separate panic and verification planners. Its planning horizon was
+32 seconds.
 
-A runway path is sticky. Once assigned, the game owns the landing sequence and
-the aircraft has less room to negotiate.
+That sounds appropriate for air-traffic control. In this simulator it created
+the wrong abstraction.
 
-So the controller commits only when the direct heading is clear. Until then it
-publishes a long temporary vector and reevaluates on the next frame. The result
-looks calm because almost nothing is permanent.
+Every additional mode introduced another transition: route to hold, hold to
+merge, merge to runway, panic back to hold. Those transitions generated edge
+cases while the long routes reduced throughput. Most importantly, the planner
+was deciding *where an aircraft belonged* when the immediate safety question
+was much smaller:
 
-## The last frame
+> Which velocity can this aircraft use now without intersecting anybody else's
+> velocity over the next few seconds?
 
-Prediction reduces risk; it does not remove floating-point edges or sequential
-updates. After the four planning passes, a final shield projects the exact
-positions the 60 Hz simulator will sample next.
+The final controller removed the holding system and reduced every frame to that
+question.
 
-If any pair is about to overlap, the threatened aircraft gets one last search
-across 64 headings. Only imminent conflicts pay this cost. It is the smallest
-part of the controller and the part that catches the rarest failures.
+## 3. Search velocities, not paths
 
-## Making it earn the claim
+For aircraft `i`, the direct bearing to its runway is the preferred velocity.
+The controller samples 48 headings around that bearing. Candidate zero is
+straight ahead; the rest alternate left and right with increasing angular
+offset.
 
-The visible game is useful for intuition and bad for measurement. We extracted
-the production simulation model and built a deterministic evaluator around it:
+For every candidate velocity `vᵢ` and every other aircraft `j`, define relative
+position and velocity:
 
-- five fixed traffic seeds;
-- twenty simulated minutes per seed;
-- the first five minutes discarded as ramp-up;
-- zero score if any seed crashes;
-- throughput balanced against the slowest seed and path inflation.
+```text
+p = positionⱼ − positionᵢ
+v = velocityⱼ − velocityᵢ
+```
 
-The baseline survived all five runs at `54.534941`. Around it, an isolated
-autoresearch process changes only the controller, runs the whole benchmark,
-keeps improvements, reverts regressions, and records the next idea. The metric
-is not allowed to negotiate with the code.
+The time of closest approach inside horizon `T = 8 s` is:
 
-## Run it
+```text
+t* = clamp(−(p · v) / |v|², 0, T)
+```
+
+and edge-to-edge clearance is:
+
+```text
+c = |p + v t*| − radiusᵢ − radiusⱼ
+```
+
+This is a velocity-obstacle test without constructing polygonal obstacles. It
+turns an entire pair of future trajectories into one scalar clearance.
+
+![Candidate headings evaluated at normal simulation speed](docs/decision-field.gif)
+
+The animation uses the production scene and aircraft assets. The game is
+fast-forwarded through warm-up, then shown at normal speed. Red headings violate
+the clearance constraint; green is the selected velocity.
+
+Candidates are ranked lexicographically in practice:
+
+```text
+safe clearance first  →  progress toward runway  →  smallest turn
+```
+
+The implementation encodes that priority as a large safety tier, then adds a
+forward-progress term and subtracts turn magnitude:
+
+```js
+score = (clearance >= 2 ? 10_000 : clearance * 100)
+      + 20 * cos(offset)
+      - abs(turn);
+```
+
+## 4. Independent avoidance is not coordination
+
+Selecting a safe velocity once per plane is insufficient. A later plane can
+choose a velocity that invalidates an earlier plane's calculation.
+
+The controller treats the current velocity field as a joint solution and runs
+four sequential best-response passes:
+
+```text
+initialize from current paths
+
+repeat 4 times:
+    for each flying aircraft in stable ID order:
+        evaluate 48 headings against the latest field
+        replace that aircraft's velocity immediately
+```
+
+Each decision becomes input to the next one. Repeating the sweep lets changes
+propagate back through the field without a combinatorial joint search.
+
+![Four sequential coordination passes](docs/coordination-passes.gif)
+
+The instrumented production client records the velocity selected on each pass.
+The animation advances at normal simulation speed while highlighting the four
+successive updates.
+
+## 5. Aircraft that do not exist yet still matter
+
+Incoming traffic appears first as a spawn warning containing an entry position,
+heading, type, and remaining warning time. Ignoring it produces routes that are
+safe now but occupied when the new aircraft materializes.
+
+For a warning arriving after `τ` seconds, the candidate aircraft is projected to
+its position at `τ`. The same closest-approach calculation then runs against the
+incoming plane's known velocity over a seven-second horizon. Spawn warnings are
+therefore ordinary moving obstacles shifted into the future.
+
+Departures are included in the same velocity field at their fixed 10.5-unit
+speed. Arrivals, departures, and not-yet-visible aircraft are evaluated by one
+pairwise model.
+
+## 6. Commit to a runway late
+
+A temporary route can change on the next frame. A runway approach cannot: once
+the game accepts it, landing behavior takes over and the aircraft loses freedom
+to negotiate.
+
+The controller commits to the runway only when:
+
+```text
+angular offset < 0.05 rad  AND  predicted clearance >= 2
+```
+
+Otherwise it publishes a long waypoint in the selected direction and solves
+again one frame later. The apparent smoothness comes from continuous
+replanning, not from long-lived routes.
+
+## 7. Recheck the frame the simulator will actually sample
+
+The horizon planner is sequential and uses floating-point predictions. Rarely,
+the completed field can still contain a conflict at the exact next 1/60-second
+sample.
+
+The final shield projects every pair one frame forward. When clearance falls
+below `0.25`, it searches 64 evenly spaced headings and replaces only the
+threatened aircraft's velocity with the safest immediate alternative.
+
+![Last-frame safety shield](docs/safety-shield.gif)
+
+This is deliberately not another long-horizon planner. It is a narrow invariant
+check over the state the simulation is about to consume. In the 15-minute
+instrumented capture, it intervened 1,092 times without changing the normal
+planning path for unaffected aircraft.
+
+## 8. Evaluation
+
+Visual runs helped identify failure modes but were not used to accept changes.
+The fixed evaluator imports the production simulation model and runs five seeded
+traffic sequences for 1,200 simulated seconds each.
+
+If any seed crashes, the metric is zero. Otherwise:
+
+```text
+metric = 0.75 × mean throughput
+       + 0.25 × worst-seed throughput
+       − 0.20 × max(0, mean path inflation − 1)
+```
+
+This objective makes three trade-offs explicit:
+
+1. Safety is a hard gate, not a weighted preference.
+2. Mean throughput cannot hide one weak traffic sequence.
+3. Detours are penalized only after they exceed the direct path.
+
+An isolated autoresearch loop edits only the controller, evaluates the full
+five-seed suite, commits improvements, and restores regressions. The evaluator,
+game modules, prompt, dependencies, and metric remain fixed.
+
+## Repository layout
+
+```text
+autopilot.js             controller injected before each simulation step
+runner.mjs               visible production-game runner
+capture-hero.mjs         two-hour warm-up + one-minute 1× hero capture
+capture-decision.mjs     48-heading search instrumentation
+capture-steps.mjs        coordination and safety-shield instrumentation
+start-runner.sh          persistent background launcher
+status-runner.sh         runner status
+stop-runner.sh           clean shutdown
+```
+
+The capture scripts patch the client only to expose the simulation and
+world-to-screen transform. All rendered terrain, runways, aircraft, paths, and
+effects are the game's original assets.
+
+## Run
 
 ```bash
-git clone https://github.com/vreabernardo/airport-solver-runner.git
-cd airport-solver-runner
+git clone https://github.com/vreabernardo/airport-autopilot.git
+cd airport-autopilot
 npm install
 npm run setup
 npm start
 ```
 
-The browser opens at `552 × 552`, while the simulation keeps the tighter world
-bounds discovered during evaluation. Closing the browser or pressing `Ctrl+C`
-stops the runner.
-
-For a process that survives the terminal:
+Closing Chromium or pressing `Ctrl+C` stops the foreground runner. To keep it
+alive after closing the terminal:
 
 ```bash
 npm run start:background
@@ -109,8 +264,7 @@ npm run status
 npm run stop
 ```
 
-The production URL, solver, profile and visible viewport can be replaced without
-editing the runner:
+Configuration is environment-based:
 
 ```bash
 GAME_URL=https://airport.apunen.com/ \
@@ -120,14 +274,15 @@ VIEWPORT_WIDTH=1200 VIEWPORT_HEIGHT=675 \
 npm start
 ```
 
-Regenerate both animations from the real game with:
+## Rebuild the animations
+
+The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
-npm run capture:hero
-npm run capture:decision
+npm run capture:hero       # fast-forward 2 h, record the next minute at 1×
+npm run capture:decision   # candidate field at true 1× speed
+npm run capture:steps      # coordination passes and safety shield
 ```
-
-The capture commands require `ffmpeg` on `PATH` (or its path in `FFMPEG`).
 
 The game is by [@lapunen](https://github.com/lapunen). The runner does not enter
 a player name, force game over, or submit a leaderboard score.

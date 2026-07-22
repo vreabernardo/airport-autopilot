@@ -1,12 +1,13 @@
 {
   "seed": 101,
+  "capturedFrames": 1516,
   "ok": true,
   "phase": "playing",
-  "elapsed": 936.0999999994773,
-  "landings": 433,
-  "departures": 291,
+  "elapsed": 7203.516666645989,
+  "landings": 3887,
+  "departures": 2635,
   "airborne": 4,
-  "total": 147,
+  "total": 1257,
   "warnings": 2,
   "bounds": {
     "minX": -39.87250908482147,
@@ -33,8 +34,8 @@
     ]
   },
   "stats": {
-    "frames": 56166,
-    "shieldInterventions": 1092
+    "frames": 432211,
+    "shieldInterventions": 13686
   },
   "stop": false
 }

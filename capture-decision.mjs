@@ -55,11 +55,6 @@ try {
     document.head.append(style);
     document.body.append(legend);
 
-    const planeSpecs = {
-      yellow: { speed: 7, radius: 2.4 },
-      blue: { speed: 8, radius: 2.6 },
-      red: { speed: 9, radius: 2.8 },
-    };
     const offsets = Array.from({ length: 48 }, (_, index) =>
       index === 0 ? 0 : (index % 2 ? 1 : -1) * Math.ceil(index / 2) * 2 * Math.PI / 48);
     const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
@@ -138,7 +133,7 @@ try {
   for (let frame = 0; frame < 90; frame++) {
     await page.evaluate(() => {
       const game = window.__game;
-      const limit = game.elapsed + 0.5;
+      const limit = game.elapsed + 1 / 15;
       while (game.phase === 'playing' && game.elapsed < limit) game.step(1 / 60);
       window.__drawDecisionField();
     });

@@ -1,8 +1,8 @@
 {
-  "name": "airport-solver-runner",
+  "name": "airport-autopilot",
   "version": "1.0.0",
   "private": true,
-  "description": "Visible, persistent production runner for the Airport Simulator solver.",
+  "description": "Predictive multi-agent air traffic control for Airport Simulator.",
   "type": "module",
   "scripts": {
     "setup": "playwright install chromium",
@@ -11,7 +11,8 @@
     "stop": "./stop-runner.sh",
     "status": "./status-runner.sh",
     "capture:hero": "node capture-hero.mjs",
-    "capture:decision": "node capture-decision.mjs"
+    "capture:decision": "node capture-decision.mjs",
+    "capture:steps": "node capture-steps.mjs"
   },
   "dependencies": {
     "playwright": "1.61.1"
