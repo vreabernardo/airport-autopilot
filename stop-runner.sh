@@ -1,7 +1,7 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 set -eu
 
-project_dir=${0:A:h}
+project_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 pid_file="$project_dir/runner.pid"
 
 if [[ ! -f "$pid_file" ]]; then
@@ -9,7 +9,7 @@ if [[ ! -f "$pid_file" ]]; then
   exit 0
 fi
 
-runner_pid=$(<"$pid_file")
+runner_pid=$(cat "$pid_file")
 if kill -0 "$runner_pid" 2>/dev/null; then
   kill -TERM "$runner_pid"
   echo "Stop requested for runner PID $runner_pid."
