@@ -1,0 +1,14 @@
+{
+  "name": "airport-solver-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Visible, persistent production runner for the Airport Simulator solver.",
+  "type": "module",
+  "scripts": {
+    "setup": "playwright install chromium",
+    "start": "node runner.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.61.1"
+  }
+}

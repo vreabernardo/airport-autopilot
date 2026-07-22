@@ -1,0 +1,7 @@
+node_modules/
+browser-profile/
+run.log
+*.png
+*.webm
+.DS_Store
+*.env
