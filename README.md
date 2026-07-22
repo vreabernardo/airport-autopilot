@@ -2,7 +2,7 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Two-hour control run at normal playback speed](docs/airspace-after-two-hours-live.gif)
+![Two-hour control run at normal playback speed](docs/airspace-after-two-hours-smooth.gif)
 
 The controller above has already operated the real simulator for two accelerated
 hours. The visible section is the next uninterrupted minute at true 1× speed.

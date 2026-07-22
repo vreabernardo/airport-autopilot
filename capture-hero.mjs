@@ -14,8 +14,8 @@ const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS || 2) * 60 * 60;
 const captureSeconds = Number(process.env.CAPTURE_SECONDS || 60);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'airspace-after-two-hours-live.gif';
-const outputFps = Math.max(1, Math.min(15, Number(process.env.HERO_FPS) || 5));
+const outputName = process.env.HERO_OUTPUT || 'airspace-after-two-hours-smooth.gif';
+const outputFps = Math.max(1, Math.min(15, Number(process.env.HERO_FPS) || 10));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
