@@ -1,14 +1,14 @@
 {
   "seed": 101,
-  "capturedFrames": 1516,
+  "capturedFrames": 1522,
   "ok": true,
   "phase": "playing",
-  "elapsed": 7203.516666645989,
-  "landings": 3887,
-  "departures": 2635,
-  "airborne": 4,
-  "total": 1257,
-  "warnings": 2,
+  "elapsed": 7203.266666645993,
+  "landings": 3843,
+  "departures": 2617,
+  "airborne": 6,
+  "total": 1233,
+  "warnings": 1,
   "bounds": {
     "minX": -39.87250908482147,
     "maxX": 39.87250908482153,
@@ -34,8 +34,8 @@
     ]
   },
   "stats": {
-    "frames": 432211,
-    "shieldInterventions": 13686
+    "frames": 432196,
+    "shieldInterventions": 12751
   },
   "stop": false
 }

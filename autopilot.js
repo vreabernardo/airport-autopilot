@@ -88,7 +88,7 @@
             clearance = Math.min(clearance, Math.hypot(px + vx * time, py + vy * time) - ac.spec.radius - warning.spec.radius);
           }
           const turn = Math.abs(Math.atan2(Math.sin(angle - current), Math.cos(angle - current)));
-          const score = (clearance >= 2 ? 10_000 : clearance * 100) + candidate.cos * 20 - turn;
+          const score = (clearance >= 2 ? 10_000 : clearance * 100) + candidate.cos * 21 - turn;
           if (!best || score > best.score) best = { score, angle, velocity, offset, clearance };
         }
         chosen.set(ac.id, best.velocity);

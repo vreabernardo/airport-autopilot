@@ -14,6 +14,7 @@ const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS || 2) * 60 * 60;
 const captureSeconds = Number(process.env.CAPTURE_SECONDS || 60);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
+const outputName = process.env.HERO_OUTPUT || 'airspace-after-two-hours.gif';
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -97,9 +98,9 @@ try {
   await execute(ffmpeg, [
     '-y', '-framerate', sourceFps, '-i', path.join(framesDir, 'frame-%04d.jpg'),
     '-vf', 'fps=15,scale=1200:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=96[p];[s1][p]paletteuse=dither=bayer',
-    '-loop', '0', path.join(outputDir, 'control-room.gif'),
+    '-loop', '0', path.join(outputDir, outputName),
   ]);
-  fs.writeFileSync(path.join(outputDir, 'control-room.json'), `${JSON.stringify({ seed: seedValue, capturedFrames, ...finalState }, null, 2)}\n`);
+  fs.writeFileSync(path.join(outputDir, `${path.basename(outputName, '.gif')}.json`), `${JSON.stringify({ seed: seedValue, capturedFrames, ...finalState }, null, 2)}\n`);
   console.log(`Captured ${finalState.elapsed.toFixed(1)} seconds with ${finalState.landings + finalState.departures} operations.`);
 } finally {
   await browser.close();

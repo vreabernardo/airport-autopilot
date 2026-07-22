@@ -2,7 +2,7 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Two-hour control run at normal playback speed](docs/control-room.gif)
+![Two-hour control run at normal playback speed](docs/airspace-after-two-hours.gif)
 
 The controller above has already operated the real simulator for two accelerated
 hours. The visible section is the next uninterrupted minute at true 1× speed.
@@ -19,10 +19,10 @@ throughput improvements from trading away safety.
 | --- | ---: |
 | Fixed evaluation runs | 5 × 20 simulated minutes |
 | Survived | 5 / 5 |
-| Mean steady-state throughput | 54.746 operations/min |
-| Worst-seed throughput | 54.332 operations/min |
-| Mean path inflation | 1.120× |
-| Composite metric | **54.618363** |
+| Mean steady-state throughput | 54.972 operations/min |
+| Worst-seed throughput | 53.999 operations/min |
+| Mean path inflation | 1.124× |
+| Composite metric | **54.704211** |
 | Longest separate validation | >5 uninterrupted simulated hours |
 
 An operation is one landing or departure. Evaluation discards the first five
@@ -127,7 +127,7 @@ forward-progress term and subtracts turn magnitude:
 
 ```js
 score = (clearance >= 2 ? 10_000 : clearance * 100)
-      + 20 * cos(offset)
+      + 21 * cos(offset)
       - abs(turn);
 ```
 
@@ -154,11 +154,12 @@ propagate back through the field without a combinatorial joint search.
 
 ![Two sequential best-response sweeps across yellow, blue, and red aircraft](docs/coordination-passes.gif)
 
-The three-plane scene uses one real aircraft asset of each type. Every route is
-paired with its same-color runway. Dashed vectors are the preceding field;
-solid vectors are the controller's recorded output for that sweep. The second
-sweep visibly revises the two decisions affected by the first sweep and leaves
-a safe joint field.
+The three-plane scene uses one production-rendered aircraft of each type. Every
+route is paired with its same-color runway. The independent direct field first
+replays to a measured conflict. The first sequential sweep turns it into a safe
+joint field; the second revisits early aircraft against the now-complete first
+field. Dashed amber vectors are proposals and solid cyan or cream vectors are
+accepted updates. The animation replays only recomputed, completed fields.
 
 ## 5. Aircraft that do not exist yet still matter
 
@@ -204,10 +205,11 @@ threatened aircraft's velocity with the safest immediate alternative.
 ![A real one-frame conflict between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
 
 This is deliberately not another long-horizon planner. It is a narrow invariant
-check over the state the simulation is about to consume. The animation is built
-from a real intervention: the displayed clearance, original velocity, and
-replacement velocity are captured directly from the shield. Unaffected
-aircraft retain their planned vectors.
+check over the state the simulation is about to consume. The animation is a
+deterministic constructed next-tick test rendered by the production game. Its
+displayed before-field, final after-field, and clearances are captured around
+the complete four-pass shield—not an intermediate repair. Exactly one aircraft
+changes velocity; the other retains its planned vector.
 
 ## 8. Evaluation
 
@@ -246,11 +248,12 @@ stop-runner.sh           clean shutdown
 ```
 
 The hero is an unmodified production-game run. The explainers use the same
-client as a deterministic test renderer: production terrain, runway and
-aircraft assets stay active; the live spawn system is paused; and the actual
-controller is instrumented during capture. The capture fails if an aircraft is
-paired with the wrong runway or if a displayed decision differs from the
-solver's recorded output.
+client as a deterministic test renderer. Production aircraft and runway assets
+stay active on a deliberately simplified dark field; the live spawn system is
+paused; and the actual controller is instrumented during capture. The capture
+fails if an aircraft is paired with the wrong runway, a decision replay uses a
+different velocity field, a completed coordination field violates its stated
+clearance, or the shield animation differs from the final velocity map.
 
 ## Run
 
