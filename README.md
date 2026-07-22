@@ -202,7 +202,7 @@ The final shield projects every pair one frame forward. When clearance falls
 below `0.25`, it searches 64 evenly spaced headings and replaces only the
 threatened aircraft's velocity with the safest immediate alternative.
 
-![A real one-frame conflict between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
+![A deterministic next-tick buffer violation between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
 
 This is deliberately not another long-horizon planner. It is a narrow invariant
 check over the state the simulation is about to consume. The animation is a
