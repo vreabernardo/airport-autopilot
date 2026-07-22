@@ -11,8 +11,7 @@
     "stop": "./stop-runner.sh",
     "status": "./status-runner.sh",
     "capture:hero": "node capture-hero.mjs",
-    "capture:decision": "node capture-decision.mjs",
-    "capture:steps": "node capture-steps.mjs"
+    "capture:explainers": "node capture-explainers.mjs"
   },
   "dependencies": {
     "playwright": "1.61.1"

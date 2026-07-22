@@ -96,12 +96,6 @@ try {
   const sourceFps = (capturedFrames / captureSeconds).toFixed(6);
   await execute(ffmpeg, [
     '-y', '-framerate', sourceFps, '-i', path.join(framesDir, 'frame-%04d.jpg'),
-    '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-    '-c:v', 'libx264', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-    path.join(outputDir, 'control-room.mp4'),
-  ]);
-  await execute(ffmpeg, [
-    '-y', '-framerate', sourceFps, '-i', path.join(framesDir, 'frame-%04d.jpg'),
     '-vf', 'fps=15,scale=1200:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=96[p];[s1][p]paletteuse=dither=bayer',
     '-loop', '0', path.join(outputDir, 'control-room.gif'),
   ]);

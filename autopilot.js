@@ -53,7 +53,6 @@
 
     for (const ac of flying) {
       ac.target ||= runways[ac.kind];
-      if (window.__apDebug) ac._passSolutions = [];
     }
 
     for (let iteration = 0; iteration < 4; iteration++) {
@@ -94,15 +93,6 @@
         }
         chosen.set(ac.id, best.velocity);
         ac._solution = best;
-        if (window.__apDebug) {
-          ac._passSolutions.push({
-            iteration,
-            angle: best.angle,
-            offset: best.offset,
-            clearance: best.clearance,
-            velocity: { ...best.velocity },
-          });
-        }
       }
     }
 
@@ -121,7 +111,6 @@
       for (const ac of flying) {
         const velocity = chosen.get(ac.id);
         let nextClearance = Infinity;
-        let threat = null;
         for (const other of airborne) {
           if (other === ac) continue;
           const ov = chosen.get(other.id);
@@ -129,10 +118,7 @@
             ac.pos.x + velocity.x * dt - other.pos.x - ov.x * dt,
             ac.pos.y + velocity.y * dt - other.pos.y - ov.y * dt,
           ) - ac.spec.radius - other.spec.radius;
-          if (clearance < nextClearance) {
-            nextClearance = clearance;
-            threat = { aircraft: other, velocity: ov };
-          }
+          nextClearance = Math.min(nextClearance, clearance);
         }
         if (nextClearance > .25) continue;
         window.__apStats.shieldInterventions++;
@@ -148,23 +134,6 @@
               - ac.spec.radius - other.spec.radius);
           }
           if (!safest || clearance > safest.clearance) safest = { ...heading, velocity: velocity2, clearance };
-        }
-        if (window.__apDebug) {
-          window.__apLastShield = {
-            elapsed: sim.elapsed,
-            aircraft: { id: ac.id, kind: ac.kind, radius: ac.spec.radius, pos: { ...ac.pos } },
-            threat: threat && {
-              id: threat.aircraft.id,
-              kind: threat.aircraft.kind,
-              radius: threat.aircraft.spec.radius,
-              pos: { ...threat.aircraft.pos },
-              velocity: { ...threat.velocity },
-            },
-            before: { ...velocity },
-            after: { ...safest.velocity },
-            clearanceBefore: nextClearance,
-            clearanceAfter: safest.clearance,
-          };
         }
         chosen.set(ac.id, safest.velocity);
         ac.path = [{ x: ac.pos.x + safest.cos * 100, y: ac.pos.y + safest.sin * 100 }];

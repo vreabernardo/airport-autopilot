@@ -9,8 +9,6 @@ hours. The visible section is the next uninterrupted minute at true 1× speed.
 Every aircraft is controlled at 60 Hz; the native scoreboard is hidden so the
 traffic remains readable.
 
-[Watch the full one-minute MP4](https://vreabernardo.github.io/airport-autopilot/control-room.mp4).
-
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
 throughput improvements from trading away safety.
@@ -109,11 +107,13 @@ c = |p + v t*| − radiusᵢ − radiusⱼ
 This is a velocity-obstacle test without constructing polygonal obstacles. It
 turns an entire pair of future trajectories into one scalar clearance.
 
-![Candidate headings evaluated at normal simulation speed](docs/decision-field.gif)
+![Staged candidate-velocity search](docs/decision-field.gif)
 
-The animation uses the production scene and aircraft assets. The game is
-fast-forwarded through warm-up, then shown at normal speed. Red headings violate
-the clearance constraint; green is the selected velocity.
+This is a deterministic two-plane level running inside the production game
+engine. The direct velocity fails the clearance test, projection locates the
+crossing conflict, and the controlled aircraft turns onto a safe instantaneous
+velocity. The direct approach remains a preference, not a committed path; the
+choice is recomputed on the next frame.
 
 Candidates are ranked lexicographically in practice:
 
@@ -152,9 +152,10 @@ propagate back through the field without a combinatorial joint search.
 
 ![Four sequential coordination passes](docs/coordination-passes.gif)
 
-The instrumented production client records the velocity selected on each pass.
-The animation advances at normal simulation speed while highlighting the four
-successive updates.
+The three-plane game-engine scene begins with individually direct choices
+sharing one conflict point. Each pass consumes the field left by the previous
+pass; by the fourth sweep the aircraft are moving through a non-intersecting
+velocity field.
 
 ## 5. Aircraft that do not exist yet still matter
 
@@ -234,16 +235,16 @@ game modules, prompt, dependencies, and metric remain fixed.
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
 capture-hero.mjs         two-hour warm-up + one-minute 1× hero capture
-capture-decision.mjs     48-heading search instrumentation
-capture-steps.mjs        coordination and safety-shield instrumentation
+capture-explainers.mjs   staged search, coordination, and shield diagrams
 start-runner.sh          persistent background launcher
 status-runner.sh         runner status
 stop-runner.sh           clean shutdown
 ```
 
-The capture scripts patch the client only to expose the simulation and
-world-to-screen transform. All rendered terrain, runways, aircraft, paths, and
-effects are the game's original assets.
+The hero is an unmodified production-game run. The explainers patch the same
+client into deterministic two- or three-plane levels: the production terrain,
+runways, aircraft renderer, motion, and native paths remain active, while the
+live spawn system is replaced and explanatory geometry is drawn above it.
 
 ## Run
 
@@ -280,8 +281,7 @@ The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
 npm run capture:hero       # fast-forward 2 h, record the next minute at 1×
-npm run capture:decision   # candidate field at true 1× speed
-npm run capture:steps      # coordination passes and safety shield
+npm run capture:explainers # rebuild all three staged technical GIFs
 ```
 
 The game is by [@lapunen](https://github.com/lapunen). The runner does not enter
