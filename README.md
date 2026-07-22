@@ -1,4 +1,4 @@
-# Airport Autopilot
+# Airport Autopilot: Receding-Horizon Control at 60 Hz
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
@@ -19,10 +19,10 @@ throughput improvements from trading away safety.
 | --- | ---: |
 | Fixed evaluation runs | 5 × 20 simulated minutes |
 | Survived | 5 / 5 |
-| Mean steady-state throughput | 54.732 operations/min |
-| Worst-seed throughput | 54.066 operations/min |
-| Mean path inflation | 1.154× |
-| Composite metric | **54.534941** |
+| Mean steady-state throughput | 54.746 operations/min |
+| Worst-seed throughput | 54.332 operations/min |
+| Mean path inflation | 1.120× |
+| Composite metric | **54.618363** |
 | Longest separate validation | >5 uninterrupted simulated hours |
 
 An operation is one landing or departure. Evaluation discards the first five
@@ -107,13 +107,14 @@ c = |p + v t*| − radiusᵢ − radiusⱼ
 This is a velocity-obstacle test without constructing polygonal obstacles. It
 turns an entire pair of future trajectories into one scalar clearance.
 
-![Staged candidate-velocity search](docs/decision-field.gif)
+![A blue aircraft rejects an unsafe direct bearing and selects a safe velocity toward the blue runway](docs/decision-field.gif)
 
-This is a deterministic two-plane level running inside the production game
-engine. The direct velocity fails the clearance test, projection locates the
-crossing conflict, and the controlled aircraft turns onto a safe instantaneous
-velocity. The direct approach remains a preference, not a committed path; the
-choice is recomputed on the next frame.
+This is a deterministic two-plane state running inside the production game
+engine. Both aircraft use their native sprites and target the runway matching
+their type. The lines are not an artist's reconstruction: the capture invokes
+the production controller, rejects the unsafe direct candidate, and renders
+the measured closest approach and the selected safe velocity. The choice is
+recomputed on the next frame.
 
 Candidates are ranked lexicographically in practice:
 
@@ -136,12 +137,13 @@ Selecting a safe velocity once per plane is insufficient. A later plane can
 choose a velocity that invalidates an earlier plane's calculation.
 
 The controller treats the current velocity field as a joint solution and runs
-four sequential best-response passes:
+two sequential best-response sweeps. A five-seed ablation found that additional
+sweeps added path churn without improving safety or throughput:
 
 ```text
 initialize from current paths
 
-repeat 4 times:
+repeat 2 times:
     for each flying aircraft in stable ID order:
         evaluate 48 headings against the latest field
         replace that aircraft's velocity immediately
@@ -150,12 +152,13 @@ repeat 4 times:
 Each decision becomes input to the next one. Repeating the sweep lets changes
 propagate back through the field without a combinatorial joint search.
 
-![Four sequential coordination passes](docs/coordination-passes.gif)
+![Two sequential best-response sweeps across yellow, blue, and red aircraft](docs/coordination-passes.gif)
 
-The three-plane game-engine scene begins with individually direct choices
-sharing one conflict point. Each pass consumes the field left by the previous
-pass; by the fourth sweep the aircraft are moving through a non-intersecting
-velocity field.
+The three-plane scene uses one real aircraft asset of each type. Every route is
+paired with its same-color runway. Dashed vectors are the preceding field;
+solid vectors are the controller's recorded output for that sweep. The second
+sweep visibly revises the two decisions affected by the first sweep and leaves
+a safe joint field.
 
 ## 5. Aircraft that do not exist yet still matter
 
@@ -198,12 +201,13 @@ The final shield projects every pair one frame forward. When clearance falls
 below `0.25`, it searches 64 evenly spaced headings and replaces only the
 threatened aircraft's velocity with the safest immediate alternative.
 
-![Last-frame safety shield](docs/safety-shield.gif)
+![A real one-frame conflict between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
 
 This is deliberately not another long-horizon planner. It is a narrow invariant
-check over the state the simulation is about to consume. In the 15-minute
-instrumented capture, it intervened 1,092 times without changing the normal
-planning path for unaffected aircraft.
+check over the state the simulation is about to consume. The animation is built
+from a real intervention: the displayed clearance, original velocity, and
+replacement velocity are captured directly from the shield. Unaffected
+aircraft retain their planned vectors.
 
 ## 8. Evaluation
 
@@ -241,10 +245,12 @@ status-runner.sh         runner status
 stop-runner.sh           clean shutdown
 ```
 
-The hero is an unmodified production-game run. The explainers patch the same
-client into deterministic two- or three-plane levels: the production terrain,
-runways, aircraft renderer, motion, and native paths remain active, while the
-live spawn system is replaced and explanatory geometry is drawn above it.
+The hero is an unmodified production-game run. The explainers use the same
+client as a deterministic test renderer: production terrain, runway and
+aircraft assets stay active; the live spawn system is paused; and the actual
+controller is instrumented during capture. The capture fails if an aircraft is
+paired with the wrong runway or if a displayed decision differs from the
+solver's recorded output.
 
 ## Run
 

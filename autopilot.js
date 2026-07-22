@@ -55,7 +55,7 @@
       ac.target ||= runways[ac.kind];
     }
 
-    for (let iteration = 0; iteration < 4; iteration++) {
+    for (let iteration = 0; iteration < 2; iteration++) {
       for (const ac of flying) {
         const runway = runways[ac.kind];
         const desired = angleTo(ac.pos, runway.approach);
