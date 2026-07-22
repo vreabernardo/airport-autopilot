@@ -9,8 +9,8 @@ const gameUrl = process.env.GAME_URL || 'https://airport.apunen.com/';
 const solverPath = path.resolve(process.env.SOLVER_PATH || path.join(projectDir, 'autopilot.js'));
 const profileDir = path.resolve(process.env.PROFILE_DIR || path.join(projectDir, 'browser-profile'));
 const viewport = {
-  width: Number.parseInt(process.env.VIEWPORT_WIDTH || '552', 10),
-  height: Number.parseInt(process.env.VIEWPORT_HEIGHT || '552', 10),
+  width: Number.parseInt(process.env.VIEWPORT_WIDTH || '1200', 10),
+  height: Number.parseInt(process.env.VIEWPORT_HEIGHT || '675', 10),
 };
 
 if (!fs.existsSync(solverPath)) {

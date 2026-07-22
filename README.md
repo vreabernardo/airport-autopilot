@@ -9,7 +9,7 @@ hours. The visible section is the next uninterrupted minute at true 1× speed.
 Every aircraft is controlled at 60 Hz; the native scoreboard is hidden so the
 traffic remains readable.
 
-[Watch the full one-minute MP4](docs/control-room.mp4).
+[Watch the full one-minute MP4](https://raw.githubusercontent.com/vreabernardo/airport-autopilot/main/docs/control-room.mp4).
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
@@ -52,9 +52,9 @@ This preserves the original map, aircraft specifications, spawn process,
 landing rules, departure queues, renderer, and assets. It changes only how paths
 are selected.
 
-The visible browser is 552 × 552 pixels. Simulation bounds are held at the
-tighter quadrilateral derived from the best 138 × 138 experiment. Rendering and
-traffic density are therefore independent: the game stays legible without
+The visible browser is 1200 × 675 pixels. Simulation bounds remain locked to
+the tighter quadrilateral derived from the best 138 × 138 experiment. Rendering
+and traffic density are therefore independent: the game stays legible without
 quietly making the control problem easier.
 
 ## 2. The first controller was too architectural
