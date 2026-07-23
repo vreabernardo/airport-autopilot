@@ -14,7 +14,7 @@ const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS || 0.5) * 60 * 60;
 const captureSeconds = Number(process.env.CAPTURE_SECONDS || 180);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'airspace-after-thirty-minutes-live.gif';
+const outputName = process.env.HERO_OUTPUT || 'airspace-after-thirty-minutes-panel.gif';
 const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 10));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
@@ -48,8 +48,6 @@ try {
   await page.addInitScript(solverSource);
   await page.goto('https://airport.apunen.com/', { waitUntil: 'domcontentloaded', timeout: 90_000 });
   await page.waitForFunction(() => window.__apStatus?.().phase === 'playing', undefined, { timeout: 90_000 });
-  await page.getByRole('button', { name: 'Hide scoreboard' }).click();
-
   const fastForwardUntil = targetSeconds;
   while (true) {
     const state = await page.evaluate(limit => {
