@@ -400,10 +400,12 @@ explicit fixed-step advancement. The full aircraft array is restored for every
 rendering each frame. The explainers use the same client as a deterministic test
 renderer. Production aircraft and runway assets stay active on a deliberately
 simplified dark field; live spawning is paused; and the actual controller is
-instrumented during capture. Capture fails if an aircraft is paired with the
-wrong runway, a decision replay uses a different velocity field, a completed
-coordination field violates its stated clearance, a spawn reservation does not
-clear its warning, or the shield animation differs from the final velocity map.
+instrumented during capture. Capture fails if a native aircraft mesh stops
+matching its scenario position, an approach reference leaves its game-rendered
+runway threshold, an aircraft is paired with the wrong runway, a decision replay
+uses a different velocity field, a completed coordination field violates its
+stated clearance, a spawn reservation does not clear its warning, or the shield
+animation differs from the final velocity map.
 
 ## Run
 

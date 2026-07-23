@@ -76,6 +76,7 @@ try {
     const exposed = source
       .replace('X=new ot,', 'X=window.__game=new ot,')
       .replace(/Y\s*=\s*new se\(d\)/, 'Y=window.__airportViewport=new se(d)')
+      .replace('fe=new oe(Y)', 'fe=window.__airportRenderer=new oe(Y)')
       .replace('function Ue(){', 'function Ue(){m(G,null);return;');
     if (exposed === source) throw new Error('Game instrumentation points were not found.');
     await route.fulfill({ response, body: exposed });
@@ -84,7 +85,8 @@ try {
   await page.addInitScript(instrumentedSolver);
   await page.goto('https://airport.apunen.com/', { waitUntil: 'domcontentloaded', timeout: 90_000 });
   await page.waitForFunction(
-    () => window.__game?.phase === 'playing' && window.__airportViewport && window.__airportControlDirect,
+    () => window.__game?.phase === 'playing' && window.__airportViewport
+      && window.__airportRenderer && window.__airportControlDirect,
     undefined,
     { timeout: 90_000 },
   );
@@ -130,10 +132,6 @@ try {
     const originalRender = viewport.render.bind(viewport);
     viewport.render = function renderDiagram(...args) {
       const simplify = object => {
-        if (object.type === 'Sprite') {
-          object.visible = false;
-          if (object.material) object.material.opacity = 0;
-        }
         if (object.name === 'aircraft-airborne-halo') {
           object.visible = false;
           object.material.opacity = 0;
@@ -446,6 +444,31 @@ try {
       context.lineWidth = width;
       context.strokeRect(Math.round(point.x - radius), Math.round(point.y - radius), Math.round(radius * 2), Math.round(radius * 2));
     };
+    const reticle = (point, radius, color, time = 0) => {
+      const pulse = Math.round((Math.sin(time * Math.PI * 3) + 1) * 2);
+      const outer = radius + pulse;
+      const arm = 10;
+      const corners = [
+        [-1, -1], [1, -1], [1, 1], [-1, 1],
+      ];
+      for (const [sx, sy] of corners) {
+        const corner = { x: point.x + sx * outer, y: point.y + sy * outer };
+        line(corner, { x: corner.x - sx * arm, y: corner.y }, color, 3);
+        line(corner, { x: corner.x, y: corner.y - sy * arm }, color, 3);
+      }
+      box(point, 2, color, 2);
+    };
+    const pulseRing = (point, radius, color, time) => {
+      const phase = (time * 1.7) % 1;
+      context.save();
+      context.globalAlpha = 1 - phase;
+      context.beginPath();
+      context.arc(Math.round(point.x), Math.round(point.y), radius * (.65 + phase * .55), 0, Math.PI * 2);
+      context.strokeStyle = color;
+      context.lineWidth = 3;
+      context.stroke();
+      context.restore();
+    };
     const label = (text, x, y, color = palette.ink, align = 'left', size = 13) => {
       context.fillStyle = color;
       context.font = `700 ${size}px Hind, ui-sans-serif, sans-serif`;
@@ -465,6 +488,16 @@ try {
       label(phase, 30, 86, palette.safe, 'left', 25);
       label(detail, 30, 122, palette.dim, 'left', 18);
     };
+    const blockMeter = (title, value, maximum, color, x = 34, y = innerHeight - 48) => {
+      label(title, x, y - 12, palette.dim, 'left', 11);
+      for (let index = 0; index < maximum; index++) {
+        context.fillStyle = index < value ? color : palette.panel;
+        context.fillRect(x + index * 15, y, 11, 8);
+        context.strokeStyle = index < value ? color : palette.edge;
+        context.lineWidth = 1;
+        context.strokeRect(x + index * 15, y, 11, 8);
+      }
+    };
     const stageStrip = active => {
       const stages = ['PLAN · 8–14 S', 'COORDINATE · 4 SWEEPS', 'CHECK · NEXT FRAME'];
       const x = 720, y = 24, width = 145;
@@ -477,13 +510,65 @@ try {
         label(stageName, x + index * (width + 6) + width / 2, y + 21, index === active ? palette.safe : palette.dim, 'center', 11);
       });
     };
+    const sceneBackdrop = (time, name) => {
+      context.save();
+      context.beginPath();
+      context.rect(0, 144, innerWidth, innerHeight - 144);
+      context.clip();
+      context.fillStyle = 'rgba(7, 16, 20, .12)';
+      for (let y = 146; y < innerHeight; y += 5) context.fillRect(0, y, innerWidth, 1);
+      const sweepX = Math.round(((time / 12) * (innerWidth + 240)) - 120);
+      context.strokeStyle = 'rgba(67, 215, 229, .14)';
+      context.lineWidth = 2;
+      context.setLineDash([2, 7]);
+      context.beginPath();
+      context.moveTo(sweepX, 144);
+      context.lineTo(sweepX, innerHeight);
+      context.stroke();
+      context.restore();
+      const corner = (x, y, sx, sy) => {
+        line({ x, y }, { x: x + sx * 28, y }, palette.edge, 2);
+        line({ x, y }, { x, y: y + sy * 28 }, palette.edge, 2);
+      };
+      corner(18, 162, 1, 1);
+      corner(innerWidth - 18, 162, -1, 1);
+      corner(18, innerHeight - 18, 1, -1);
+      corner(innerWidth - 18, innerHeight - 18, -1, -1);
+      label(`LIVE REPLAY · ${name.toUpperCase().replaceAll('-', ' ')}`,
+        innerWidth - 34, innerHeight - 27, palette.edge, 'right', 11);
+    };
+    const runwayGate = (target, color) => {
+      const approach = screen(target.approach);
+      const runwayLength = Math.hypot(
+        target.end.x - target.approach.x,
+        target.end.y - target.approach.y,
+      );
+      const normal = {
+        x: -(target.end.y - target.approach.y) / runwayLength,
+        y: (target.end.x - target.approach.x) / runwayLength,
+      };
+      const halfGate = target.width * .85;
+      line(
+        screen({
+          x: target.approach.x - normal.x * halfGate,
+          y: target.approach.y - normal.y * halfGate,
+        }),
+        screen({
+          x: target.approach.x + normal.x * halfGate,
+          y: target.approach.y + normal.y * halfGate,
+        }),
+        color,
+        5,
+      );
+    };
     const targetMarker = plane => {
       const target = plane.solverTarget;
       const approach = screen(target.approach);
       const runwayEnd = screen(target.end);
-      line(approach, runwayEnd, colorFor(plane.kind), 2, [6, 5]);
-      box(approach, 8, colorFor(plane.kind), 3);
-      label(`${plane.kind.toUpperCase()} APPROACH`, approach.x, approach.y - 18, colorFor(plane.kind), 'center', 13);
+      const color = colorFor(plane.kind);
+      line(approach, runwayEnd, color, 2, [6, 5]);
+      runwayGate(target, color);
+      label(`${plane.kind.toUpperCase()} THRESHOLD`, approach.x, approach.y - 20, colorFor(plane.kind), 'center', 13);
     };
     const endpoint = (plane, velocity, seconds = 2.6) => screen({
       x: plane.pos.x + velocity.x * seconds,
@@ -503,6 +588,16 @@ try {
     };
     const frameScene = (planes, runwayKinds, zoom) => {
       sim.map.runways = allRunways.filter(runway => runwayKinds.includes(runway.color));
+      const runwayMeshes = window.__airportRenderer.runwayGroup.children;
+      const meshesPerRunway = runwayMeshes.length / allRunways.length;
+      allRunways.forEach((runway, runwayIndex) => {
+        const visible = runwayKinds.includes(runway.color);
+        const firstMesh = runwayIndex * meshesPerRunway;
+        const lastMesh = firstMesh + meshesPerRunway;
+        for (let meshIndex = firstMesh; meshIndex < lastMesh; meshIndex++) {
+          runwayMeshes[meshIndex].visible = visible;
+        }
+      });
       const points = [
         ...planes.map(plane => plane.pos),
         ...sim.map.runways.flatMap(runway => [runway.approach, runway.end]),
@@ -521,6 +616,7 @@ try {
     const drawPlaneIdentity = plane => {
       const point = screen(plane.pos);
       label(`${plane.kind.toUpperCase()} AIRCRAFT`, point.x, point.y + 42, colorFor(plane.kind), 'center', 14);
+      reticle(point, 23, colorFor(plane.kind));
       targetMarker(plane);
     };
     const setPath = (plane, velocity) => {
@@ -589,15 +685,12 @@ try {
     };
     window.__renderScenario = (name, time) => {
       context.clearRect(0, 0, innerWidth, innerHeight);
+      sceneBackdrop(time, name);
 
       if (name === 'decision-field') {
         const scenario = window.__scenarios.decision;
         const planes = usePlanes(scenario.planes);
         frameScene(planes, ['blue', 'red'], 1.55);
-        context.fillStyle = '#102126';
-        context.fillRect(490, 170, 80, 45);
-        context.fillRect(525, 440, 78, 45);
-        context.fillRect(765, 144, 48, 25);
         const focus = planes.find(plane => plane.id === scenario.focusId);
         const threat = planes.find(plane => plane.id !== scenario.focusId);
         const focusSource = scenario.planes.find(plane => plane.id === scenario.focusId);
@@ -716,8 +809,11 @@ try {
           else if (mode === 'land') placeOnLandingRoute(plane, clearPosition, progress);
           else move(plane, source, finalVelocity, 0);
           if (mode !== 'land') {
-            label(orderLabel(plane), screen(plane.pos).x, screen(plane.pos).y - 45,
+            const planePoint = screen(plane.pos);
+            label(orderLabel(plane), planePoint.x, planePoint.y - 45,
               plane === ordered[0] ? palette.safe : palette.ink, 'center', 16);
+            reticle(planePoint, 22, plane === ordered[0] ? palette.safe : colorFor(plane.kind),
+              time + ordered.findIndex(item => item.id === plane.id) * .18);
           }
           if (mode === 'hold0') {
             const origin = screen(plane.pos);
@@ -920,6 +1016,7 @@ try {
           arrow(screen(controlledStart), screen(projected), palette.danger, 6, [10, 7]);
           physicalDisc(controlled, projected, palette.danger);
           box(screen(warningPoint), 15, palette.red, 4);
+          pulseRing(screen(warningPoint), 24, palette.red, time);
           cross(screen(warningPoint));
           label(`RED ARRIVES IN ${scenario.warning.warningRemaining.toFixed(1)} S`,
             screen(warningPoint).x, screen(warningPoint).y - 35, palette.red, 'center', 18);
@@ -933,6 +1030,7 @@ try {
           arrow(screen(controlled.pos), endpoint(controlled, scenario.selected.velocity, 1.2),
             palette.safe, 7);
           box(screen(warningPoint), 15, palette.red, 4);
+          pulseRing(screen(warningPoint), 24, palette.red, time);
           label(`RED ARRIVES IN ${countdown.toFixed(1)} S`,
             screen(warningPoint).x, screen(warningPoint).y - 35, palette.red, 'center', 18);
           panel('3 · RESERVE SPACE FOR AIRCRAFT NOT HERE YET',
@@ -969,6 +1067,11 @@ try {
           panel('3 · RESERVE SPACE FOR AIRCRAFT NOT HERE YET',
             progress >= .96 ? 'BOTH AIRCRAFT LANDED' : 'SAFE ENTRY · NORMAL ROUTING CONTINUES',
             'BLUE → BLUE · RED → RED · THE WARNING CHANGED TIMING, NOT DESTINATIONS');
+        }
+        if (!landing) {
+          reticle(screen(controlled.pos), 23, palette.blue, time);
+          if (incoming) reticle(screen(incoming.pos), 23, palette.red, time + .2);
+          blockMeter('SPAWN COUNTDOWN', Math.ceil(countdown), 5, palette.red);
         }
       }
 
@@ -1031,7 +1134,7 @@ try {
             queued.pos = { ...scenario.queued.pos };
           }
           arrow(screen(scenario.active.pos), screen(approach), palette.safe, 7);
-          box(screen(approach), 12, palette.safe, 4);
+          runwayGate(scenario.runway, palette.safe);
           label('SIMULATOR ACCEPTS LANDING HERE', screen(approach).x,
             screen(approach).y - 36, palette.safe, 'center', 17);
           label(released ? 'NEXT ARRIVAL ENTERS' : 'WAITING', screen(queued.pos).x,
@@ -1042,18 +1145,36 @@ try {
               ? `GROUND MOVEMENT CONTINUES OUTSIDE AIRBORNE CAPACITY · INBOUND CAPACITY ${capacity}`
               : 'NO SPEED, SCORE, COLLISION, OR TAXI RULE CHANGED');
         }
+        reticle(screen(active.pos), 24, palette.blue, time);
+        reticle(screen(queued.pos), 22, newPhase ? palette.blue : palette.dim, time + .2);
+        blockMeter('AIRBORNE CAPACITY', capacity === '11 / 12' ? 11 : 12, 12,
+          capacity === '11 / 12' ? palette.proposed : palette.safe);
       }
 
       if (name === 'decision-field' || name === 'coordination-passes'
           || name === 'safety-shield') {
         stageStrip(name === 'decision-field' ? 0 : name === 'coordination-passes' ? 1 : 2);
       }
+      window.__airportRenderer.syncAircraft(sim.aircraft, null, new Set(), true);
+      window.__airportViewport.render();
     };
 
     const matching = [decision, coordination, shield].every(scenario =>
       scenario.planes.every(plane => plane.target.color === plane.kind));
+    const runwayMeshes = window.__airportRenderer.runwayGroup.children;
+    const meshesPerRunway = runwayMeshes.length / allRunways.length;
+    const alignedRunwayAssets = Number.isInteger(meshesPerRunway)
+      && allRunways.every((runway, runwayIndex) => {
+        const thresholdMesh = runwayMeshes[(runwayIndex + 1) * meshesPerRunway - 1];
+        return thresholdMesh
+          && Math.hypot(
+            thresholdMesh.position.x - runway.approach.x,
+            thresholdMesh.position.y - runway.approach.y,
+          ) < 1e-6;
+      });
     return {
       matchingRunways: matching,
+      alignedRunwayAssets,
       decision: {
         focus: decision.planes.find(plane => plane.id === decision.focusId).kind,
         directClearance: decision.planes.find(plane => plane.id === decision.focusId).candidates[1].find(candidate => Math.abs(candidate.offset) < 1e-9).clearance,
@@ -1088,6 +1209,7 @@ try {
   });
 
   if (!audit.matchingRunways) throw new Error('Semantic audit failed: aircraft/runway color mismatch.');
+  if (!audit.alignedRunwayAssets) throw new Error('Semantic audit failed: runway assets and approach references diverge.');
   console.log('Semantic audit:', JSON.stringify(audit, null, 2));
 
   const defaultNames = [
@@ -1097,6 +1219,50 @@ try {
     'threshold-release',
     'safety-shield',
   ];
+  const motionWindows = {
+    'decision-field': [0.1, 1.3],
+    'coordination-passes': [0.1, 1.3],
+    'spawn-reservation': [3.0, 5.8],
+    'threshold-release': [0.2, 4.5],
+    'safety-shield': [6.5, 10.8],
+  };
+  const motionAudit = await page.evaluate(windows => {
+    const result = {};
+    const positions = () => Object.fromEntries(
+      window.__game.aircraft.map(aircraft => [aircraft.id, { ...aircraft.pos }]),
+    );
+    const nativeMeshesMatch = () => window.__game.aircraft.every(aircraft => {
+      const entry = window.__airportRenderer.entries.get(aircraft.id);
+      return entry
+        && Math.hypot(
+          entry.group.position.x - aircraft.pos.x,
+          entry.group.position.y - aircraft.pos.y,
+        ) < 1e-6;
+    });
+    for (const [name, [start, end]] of Object.entries(windows)) {
+      window.__renderScenario(name, start);
+      const before = positions();
+      const alignedBefore = nativeMeshesMatch();
+      window.__renderScenario(name, end);
+      const after = positions();
+      const alignedAfter = nativeMeshesMatch();
+      const distance = Math.max(...Object.entries(before)
+        .filter(([id]) => after[id])
+        .map(([id, point]) => Math.hypot(after[id].x - point.x, after[id].y - point.y)));
+      result[name] = { distance, nativeMeshesMatch: alignedBefore && alignedAfter };
+    }
+    return result;
+  }, motionWindows);
+  for (const [name, result] of Object.entries(motionAudit)) {
+    if (!result.nativeMeshesMatch) {
+      throw new Error(`Motion audit failed: ${name} native aircraft mesh is not synchronized.`);
+    }
+    if (result.distance < 1) {
+      throw new Error(`Motion audit failed: ${name} aircraft do not visibly change position.`);
+    }
+  }
+  console.log('Motion audit:', JSON.stringify(motionAudit, null, 2));
+
   const captureNames = process.env.CAPTURE_NAMES
     ? process.env.CAPTURE_NAMES.split(',').map(name => name.trim()).filter(Boolean)
     : defaultNames;
