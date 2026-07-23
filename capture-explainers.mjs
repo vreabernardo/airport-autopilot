@@ -379,7 +379,7 @@ try {
       label(detail, 30, 122, palette.dim, 'left', 18);
     };
     const stageStrip = active => {
-      const stages = ['PLAN · 8.0 S', 'COORDINATE · 2 SWEEPS', 'VERIFY · 1/60 S'];
+      const stages = ['PLAN · 8.0 S', 'COORDINATE · 2 SWEEPS', 'CHECK · NEXT FRAME'];
       const x = 720, y = 24, width = 145;
       stages.forEach((stageName, index) => {
         context.fillStyle = index === active ? '#123e46' : palette.panel;
@@ -714,9 +714,9 @@ try {
         const origin = screen(controlled.pos);
         const threatOrigin = screen(threat.pos);
         if (!landing) {
-          const tickLabel = afterTick ? 'n+1' : 'n';
-          label(`${controlled.kind.toUpperCase()} · TICK ${tickLabel}`, origin.x - 42, origin.y - 72, colorFor(controlled.kind), 'center', 17);
-          label(`${threat.kind.toUpperCase()} · TICK ${tickLabel}`, threatOrigin.x + 48, threatOrigin.y + 84, colorFor(threat.kind), 'center', 17);
+          const stateLabel = afterTick ? 'MOVED' : 'NOW';
+          label(`${controlled.kind.toUpperCase()} · ${stateLabel}`, origin.x - 42, origin.y - 72, colorFor(controlled.kind), 'center', 17);
+          label(`${threat.kind.toUpperCase()} · ${stateLabel}`, threatOrigin.x + 48, threatOrigin.y + 84, colorFor(threat.kind), 'center', 17);
         } else {
           planes.forEach(targetMarker);
         }
@@ -733,35 +733,24 @@ try {
           physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(beforeA, nextB, palette.danger);
           cross({ x: (beforeA.x + nextB.x) / 2, y: (beforeA.y + nextB.y) / 2 });
-          label('COLORED CIRCLES = PHYSICAL BOUNDARIES AT TICK n+1', innerWidth / 2, innerHeight - 38, palette.dim, 'center', 15);
-          panel('3 · CHECK THE NEXT SIMULATOR TICK', time < 1.2 ? 'THE 8-SECOND PLANNER CHOSE ITS BEST FIELD' : 'EXACT NEXT-TICK BUFFER STILL FAILS', `PREVIEW TICK n+1 · EDGE GAP ${event.clearanceBefore.toFixed(3)} < REQUIRED 0.250`);
+          label('COLORED CIRCLES = WHERE THE PLANES WILL BE NEXT FRAME', innerWidth / 2, innerHeight - 38, palette.dim, 'center', 15);
+          panel('3 · ONE LAST CHECK BEFORE MOVING', time < 1.2 ? 'PREVIEW THE NEXT FRAME' : 'TOO CLOSE · DO NOT MOVE YET', `NEXT-FRAME GAP ${event.clearanceBefore.toFixed(3)} < REQUIRED 0.250`);
         } else if (!landing) {
           arrow(screen(controlledSource.pos), endpoint(controlled, event.before, .22), palette.proposed, 3, [10, 7]);
-          if (!afterTick) {
-            const fanOrigin = screen(controlledSource.pos);
-            for (let index = 0; index < 64; index++) {
-              const angle = index / 64 * Math.PI * 2;
-              const end = screen({
-                x: controlledSource.pos.x + Math.cos(angle) * 1.8,
-                y: controlledSource.pos.y + Math.sin(angle) * 1.8,
-              });
-              line(fanOrigin, end, palette.edge, 1);
-            }
-          }
           arrow(screen(controlledSource.pos), endpoint(controlled, event.after, .22), palette.safe, 8);
           box(beforeA, 5, palette.proposed, 2);
           physicalDisc(controlledSource, afterPosition, colorFor(controlledSource.kind));
           physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(afterA, nextB, palette.safe);
-          const repairPhase = time < 4.25 ? 'PASS 1 / 4 · SEARCH 64 HEADINGS' : 'PASSES 2–4 · RECHECK UPDATED FIELD';
-          label(afterTick ? 'AIRCRAFT ARE NOW AT TICK n+1' : 'COLORED CIRCLES = REPAIRED TICK n+1', innerWidth / 2, innerHeight - 38, afterTick ? palette.safe : palette.dim, 'center', 15);
-          panel('3 · CHECK THE NEXT SIMULATOR TICK', afterTick ? 'SIMULATOR ADVANCES ONE SAFE TICK' : repairPhase, `AMBER = PLANNER CHOICE · CYAN = YELLOW OVERRIDE · GAP ${event.clearanceAfter.toFixed(3)} > 0.250`);
+          label(afterTick ? 'THE SAFE PREVIEW IS NOW THE CURRENT FRAME' : 'COLORED CIRCLES = SAFER NEXT FRAME', innerWidth / 2, innerHeight - 38, afterTick ? palette.safe : palette.dim, 'center', 15);
+          const repairPhase = time < 4.25 ? 'TURN YELLOW SLIGHTLY' : 'CHECK AGAIN · NOW SAFE';
+          panel('3 · ONE LAST CHECK BEFORE MOVING', afterTick ? 'MOVE BOTH PLANES ONE FRAME' : repairPhase, `AMBER = OLD DIRECTION · CYAN = SAFER DIRECTION · GAP ${event.clearanceAfter.toFixed(3)} > 0.250`);
         } else {
           drawLandingRoute(controlled, controlledAfterTick);
           drawLandingRoute(threat, threatAfterTick);
           const landingProgress = (time - 6.4) / 4.6;
           if (landingProgress >= .96) planes.forEach(landedMark);
-          panel('3 · CHECK THE NEXT SIMULATOR TICK', landingProgress >= .96 ? 'BOTH AIRCRAFT LANDED' : 'NEXT FRAME: NORMAL PLANNING RESUMES', 'THE SHIELD CHANGED ONE TICK · IT DID NOT CHANGE EITHER DESTINATION');
+          panel('3 · ONE LAST CHECK BEFORE MOVING', landingProgress >= .96 ? 'BOTH AIRCRAFT LANDED' : 'SAFE TO MOVE · NORMAL ROUTING RESUMES', 'THE FINAL CHECK CHANGED ONE STEP · NOT EITHER DESTINATION');
         }
       }
 

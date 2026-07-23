@@ -252,43 +252,41 @@ Otherwise it publishes a long waypoint in the selected direction and solves
 again one frame later. The apparent smoothness comes from continuous
 replanning, not from long-lived routes.
 
-## 7. Verify the exact next tick before advancing
+## 7. One last check before moving
 
-Planning and verification answer different questions:
-
-| Stage | Question | Lookahead | Search |
-| --- | --- | ---: | ---: |
-| Planner | Which velocity is best over the local traffic horizon? | 8 seconds | 48 headings, two coordination sweeps |
-| Verifier | Will the completed field preserve the buffer on the next simulator step? | 1/60 second | 64 repair headings, four passes |
-
-The planner always returns its best available field, including in a crowded
-state where no candidate is ideal. Before the simulator consumes that field, the
-verifier freezes it and projects every aircraft forward by exactly one tick.
-
-If any projected pair has edge clearance `≤ 0.25`, the verifier searches 64
-evenly spaced headings and replaces the threatened aircraft's velocity with the
-safest immediate alternative. It runs four sequential passes because one repair
-changes the field seen by every later aircraft:
-
-```text
-repeat 4 times:
-    for each flying aircraft in stable ID order:
-        measure minimum edge clearance at t + 1/60 s
-        if clearance <= 0.25:
-            test 64 headings against the latest velocity field
-            replace this aircraft immediately with the safest heading
-```
+Before the game moves the aircraft, the controller previews the next frame. If
+two physical collision circles would be too close, it turns one aircraft
+slightly, checks the preview again, and only then lets the game advance.
 
 ![A deterministic next-tick buffer violation between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
 
-The animation is a deterministic constructed test rendered by the production
-game. Aircraft sprites show the current frame (`tick n`); colored circles show
-their physical collision boundaries one frame later (`tick n+1`). The first
-projection leaves only `0.151` units of edge clearance, below the required
-`0.250`. Pass 1 changes yellow's heading; passes 2–4 recheck that updated field;
-the final projection has `0.303` clearance. The simulator then advances one
-tick, ordinary planning resumes, and both aircraft land on their original
-runways. This teaching case has one replacement; a general frame may have more.
+In the close-up, the aircraft sprites are where the planes are now and the
+colored circles are where their physical boundaries will be next frame. The
+first preview is too close. Yellow turns, the second preview is safe, and both
+planes move. Normal routing then resumes and both land on their original
+runways.
+
+That is the entire purpose of this final check. It does not choose destinations
+or replace the eight-second planner; it prevents the already chosen field from
+handing an unsafe immediate step to the simulator.
+
+### Implementation detail
+
+The check projects every pair forward by `1/60` second. At edge clearance
+`≤ 0.25`, it tests 64 evenly spaced headings and keeps the safest immediate
+alternative. It makes four sequential passes because changing one aircraft also
+changes what every later aircraft will see:
+
+```text
+repeat 4 times:
+    for each flying aircraft:
+        preview this pair one frame ahead
+        if edge clearance <= 0.25:
+            test 64 headings and keep the safest
+```
+
+The teaching case starts with `0.151` clearance and finishes with `0.303`. It
+needs one replacement; a general frame may need more.
 
 Across the five final evaluation runs the counter recorded 9,243 velocity
 replacements over 360,005 controlled frames: 2.57 replacements per 100 frames,
