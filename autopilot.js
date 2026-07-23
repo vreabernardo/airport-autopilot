@@ -48,6 +48,10 @@
     const options = window.__apOptions || {};
     const planningPasses = options.directOnly ? 1 : (options.planningPasses ?? 4);
     const headings = options.headings ?? 48;
+    const yellowHorizon = options.yellowHorizon ?? 12;
+    const blueHorizon = options.blueHorizon ?? 14;
+    const redHorizon = options.redHorizon ?? 9;
+    const thresholdOnlyLanding = options.thresholdOnlyLanding ?? true;
     const candidateHeadings = options.directOnly
       ? [offsetTable(headings)[0]]
       : offsetTable(headings);
@@ -55,7 +59,9 @@
     const runways = Object.fromEntries(sim.map.runways.map(runway => [runway.color, runway]));
     const airborne = sim.aircraft.filter(ac => ac.state === 'flying' || ac.state === 'departing');
     const flying = airborne.filter(ac => ac.state === 'flying')
-      .sort((a, b) => a.age - b.age || a.id - b.id);
+      .sort(options.sortMode === 'id'
+        ? (a, b) => a.id - b.id
+        : (a, b) => a.age - b.age || a.id - b.id);
     const warnings = sim.spawnWarnings.map(warning => {
       const spec = planeSpecs[warning.kind];
       return {
@@ -77,7 +83,9 @@
     for (let iteration = 0; iteration < planningPasses; iteration++) {
       for (const ac of flying) {
         const runway = runways[ac.kind];
-        const kindHorizon = ac.kind === 'blue' ? 14 : ac.kind === 'red' ? 9 : 12;
+        const kindHorizon = ac.kind === 'blue'
+          ? blueHorizon
+          : ac.kind === 'red' ? redHorizon : yellowHorizon;
         const desired = angleTo(ac.pos, runway.approach);
         const desiredCos = Math.cos(desired), desiredSin = Math.sin(desired);
         const current = Math.atan2(chosen.get(ac.id).y, chosen.get(ac.id).x);
@@ -148,7 +156,9 @@
       const runway = runways[ac.kind];
       const best = ac._solution;
       if (Math.abs(best.offset) < .05 && best.clearance >= 1.8) {
-        ac.path = [{ ...runway.approach }];
+        ac.path = thresholdOnlyLanding
+          ? [{ ...runway.approach }]
+          : [{ ...runway.approach }, { ...runway.end }];
       } else {
         ac.path = [{ x: ac.pos.x + Math.cos(best.angle) * 100, y: ac.pos.y + Math.sin(best.angle) * 100 }];
       }

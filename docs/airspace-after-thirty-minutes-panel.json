@@ -4,11 +4,11 @@
   "ok": true,
   "phase": "playing",
   "elapsed": 1980.2666666651944,
-  "landings": 1015,
-  "departures": 662,
-  "airborne": 3,
-  "total": 357,
-  "warnings": 1,
+  "landings": 1238,
+  "departures": 677,
+  "airborne": 7,
+  "total": 569,
+  "warnings": 2,
   "bounds": {
     "minX": -39.87250908482147,
     "maxX": 39.87250908482153,
@@ -35,7 +35,7 @@
   },
   "stats": {
     "frames": 118816,
-    "shieldInterventions": 3009
+    "shieldInterventions": 3818
   },
   "stop": false
 }

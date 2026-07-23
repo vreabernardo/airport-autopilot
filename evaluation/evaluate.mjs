@@ -12,7 +12,13 @@ const seeds = [101, 102, 103, 104, 105];
 const variants = [
   { name: 'direct_only', options: { directOnly: true, shieldPasses: 0 } },
   { name: 'one_planning_sweep', options: { planningPasses: 1 } },
-  { name: 'two_sweeps_no_shield', options: { shieldPasses: 0 } },
+  { name: 'two_planning_sweeps', options: { planningPasses: 2 } },
+  { name: 'four_sweeps_id_order', options: { sortMode: 'id' } },
+  {
+    name: 'uniform_warning_horizon',
+    options: { yellowHorizon: 12, blueHorizon: 12, redHorizon: 12 },
+  },
+  { name: 'full_runway_roll', options: { thresholdOnlyLanding: false } },
   { name: 'final', options: {} },
 ];
 const warmupSeconds = 300;
@@ -35,10 +41,12 @@ const browser = await chromium.launch({
   args: ['--allow-file-access-from-files'],
 });
 try {
-  const page = await browser.newPage({ viewport: { width: 138, height: 138 } });
-  await page.addInitScript(controllerSource);
-  await page.goto(new URL('./fixed/eval.html', import.meta.url).href);
-  const rows = await page.evaluate(async ({ seeds, variants, warmupSeconds, durationSeconds, bounds }) => {
+  const rows = [];
+  for (const variant of variants) {
+    const page = await browser.newPage({ viewport: { width: 138, height: 138 } });
+    await page.addInitScript(controllerSource);
+    await page.goto(new URL('./fixed/eval.html', import.meta.url).href);
+    const variantRows = await page.evaluate(async ({ seeds, variants, warmupSeconds, durationSeconds, bounds }) => {
     const base = location.href.slice(0, -'fixed/eval.html'.length);
     const { Sim } = await import(`${base}fixed/site/_app/immutable/nodes/2.Busf_-R-.js`);
     const { b: map } = await import(`${base}fixed/site/_app/immutable/chunks/CurhFkDx.js`);
@@ -106,7 +114,16 @@ try {
       }
     }
     return output;
-  }, { seeds, variants, warmupSeconds, durationSeconds, bounds });
+    }, {
+      seeds,
+      variants: [variant],
+      warmupSeconds,
+      durationSeconds,
+      bounds,
+    });
+    rows.push(...variantRows);
+    await page.close();
+  }
 
   const summarize = variant => {
     const selected = rows.filter(row => row.variant === variant.name);
@@ -153,7 +170,9 @@ try {
     aggregate: summaries.final,
     runs: rows,
   };
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  const serialized = `${JSON.stringify(result, null, 2)}\n`;
+  fs.writeFileSync(new URL('./results/latest.json', import.meta.url), serialized);
+  process.stdout.write(serialized);
 } finally {
   await browser.close();
 }

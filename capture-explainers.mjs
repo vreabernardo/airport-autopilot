@@ -21,8 +21,8 @@ const instrumentedSolver = solverSource
     'for (const ac of flying) {\n      if (window.__captureExplain) { ac._capturePasses = []; ac._captureCandidates = []; ac._captureFields = []; }\n      ac.target ||= runways[ac.kind];',
   )
   .replace(
-    'let best = null;\n        for (const candidate of candidateHeadings) {',
-    'let best = null;\n        const captureCandidates = [];\n        const captureField = Object.fromEntries([...chosen].map(([id, velocity]) => [id, { ...velocity }]));\n        for (const candidate of candidateHeadings) {',
+    'let best = null;\n        const reverse',
+    'let best = null;\n        const captureCandidates = [];\n        const captureField = Object.fromEntries([...chosen].map(([id, velocity]) => [id, { ...velocity }]));\n        const reverse',
   )
   .replace(
     'if (!best || score > best.score) best = { score, angle, velocity, offset, clearance };',
@@ -199,7 +199,7 @@ try {
       ...samples[kind], id, kind, spec: samples[kind].spec, pos: { ...samples[kind].pos },
       path: [], target: null, state: 'flying', age: 30, landProgress: 0, takeoffProgress: 0,
     });
-    const stage = planes => {
+    const stage = (planes, stagedWarnings = []) => {
       for (const plane of planes) {
         plane.target = null;
         plane.state = 'flying';
@@ -207,6 +207,7 @@ try {
         plane.heading = angleTo(plane.pos, plane.path[0]);
       }
       sim.aircraft.splice(0, sim.aircraft.length, ...planes);
+      sim.spawnWarnings.splice(0, sim.spawnWarnings.length, ...stagedWarnings);
       window.__captureShieldEvents = [];
       window.__captureShieldFinal = null;
       window.__airportControlDirect(sim);
@@ -225,7 +226,7 @@ try {
     const pairwiseSeparated = planes => planes.every((plane, index) =>
       planes.slice(index + 1).every(other => screenDistance(plane.pos, other.pos) > 135));
     const snapshot = plane => ({
-      kind: plane.kind, id: plane.id, pos: { ...plane.pos }, spec: plane.spec,
+      kind: plane.kind, id: plane.id, age: plane.age, pos: { ...plane.pos }, spec: plane.spec,
       target: runwayFor(plane.kind), direct: velocityTo(plane, runwayFor(plane.kind).approach),
       passes: plane._capturePasses.map(pass => ({ ...pass, velocity: { ...pass.velocity } })),
       candidates: plane._captureCandidates.map(list => list.map(candidate => ({ ...candidate, velocity: { ...candidate.velocity } }))),
@@ -277,18 +278,21 @@ try {
     let coordination = null;
     for (let trial = 0; trial < 50000 && !coordination; trial++) {
       const planes = [clonePlane('yellow', 9201), clonePlane('blue', 9202), clonePlane('red', 9203)];
+      planes[0].age = 24;
+      planes[1].age = 9;
+      planes[2].age = 1;
       for (const plane of planes) plane.pos = randomPoint();
       stage(planes);
       const deltas = planes.map(plane => Math.abs(Math.atan2(
-        Math.sin(plane._capturePasses[1].angle - plane._capturePasses[0].angle),
-        Math.cos(plane._capturePasses[1].angle - plane._capturePasses[0].angle),
+        Math.sin(plane._capturePasses[3].angle - plane._capturePasses[0].angle),
+        Math.cos(plane._capturePasses[3].angle - plane._capturePasses[0].angle),
       )));
       const sweep0 = closestPair(planes, passField(planes, 0));
-      const sweep1 = closestPair(planes, passField(planes, 1));
+      const sweep3 = closestPair(planes, passField(planes, 3));
       const direct = closestPair(planes, Object.fromEntries(planes.map(plane => [plane.id, velocityTo(plane, runwayFor(plane.kind).approach)])));
-      if (pairwiseSeparated(planes) && direct.clearance < 2 && sweep0.clearance >= 2 && sweep1.clearance >= 2
+      if (pairwiseSeparated(planes) && direct.clearance < 2 && sweep0.clearance >= 2 && sweep3.clearance >= 2
           && Math.max(...deltas) > .12 && direct.time > .5) {
-        coordination = { planes: planes.map(snapshot), deltas, direct, sweep0, sweep1 };
+        coordination = { planes: planes.map(snapshot), deltas, direct, sweep0, sweep3 };
       }
     }
     if (!coordination) throw new Error('Could not synthesize a valid sequential-coordination scene.');
@@ -327,7 +331,90 @@ try {
     }
     if (!shield) throw new Error('Could not synthesize a final one-aircraft safety-shield repair.');
 
-    window.__scenarios = { decision, coordination, shield };
+    let spawnReservation = null;
+    for (let trial = 0; trial < 4000 && !spawnReservation; trial++) {
+      const plane = clonePlane('blue', 9401);
+      plane.pos = randomPoint();
+      if (!clearOfOwnRunway(plane)) continue;
+      const direct = velocityTo(plane, runwayFor(plane.kind).approach);
+      const warningRemaining = 2.8 + random() * 1.4;
+      const lateral = (random() - .5) * 1.5;
+      const length = Math.hypot(direct.x, direct.y);
+      const warning = {
+        id: 9901,
+        kind: 'red',
+        pos: {
+          x: plane.pos.x + direct.x * warningRemaining - direct.y / length * lateral,
+          y: plane.pos.y + direct.y * warningRemaining + direct.x / length * lateral,
+        },
+        heading: Math.atan2(direct.y, direct.x) + Math.PI,
+        warningRemaining,
+      };
+      stage([plane], [warning]);
+      const candidates = plane._captureCandidates[3];
+      const directCandidate = candidates.find(candidate => Math.abs(candidate.offset) < 1e-9);
+      const selected = plane._capturePasses[3];
+      if (directCandidate?.clearance < 0 && selected.clearance >= 2
+          && Math.abs(selected.offset) > .12
+          && screenDistance(plane.pos, warning.pos) > 150) {
+        spawnReservation = {
+          plane: snapshot(plane),
+          warning: {
+            ...warning,
+            pos: { ...warning.pos },
+            spec: samples.red.spec,
+            velocity: {
+              x: Math.cos(warning.heading) * samples.red.spec.speed,
+              y: Math.sin(warning.heading) * samples.red.spec.speed,
+            },
+          },
+          direct: { ...directCandidate, velocity: { ...directCandidate.velocity } },
+          selected: { ...selected, velocity: { ...selected.velocity } },
+        };
+      }
+    }
+    if (!spawnReservation) throw new Error('Could not synthesize a future-spawn reservation scene.');
+
+    const thresholdRunway = runwayFor('blue');
+    const runwayLength = Math.hypot(
+      thresholdRunway.end.x - thresholdRunway.approach.x,
+      thresholdRunway.end.y - thresholdRunway.approach.y,
+    );
+    const runwayDirection = {
+      x: (thresholdRunway.end.x - thresholdRunway.approach.x) / runwayLength,
+      y: (thresholdRunway.end.y - thresholdRunway.approach.y) / runwayLength,
+    };
+    const thresholdPlane = clonePlane('blue', 9501);
+    thresholdPlane.pos = {
+      x: thresholdRunway.approach.x - runwayDirection.x * 18,
+      y: thresholdRunway.approach.y - runwayDirection.y * 18,
+    };
+    thresholdPlane.target = thresholdRunway;
+    const queuedPlane = clonePlane('blue', 9502);
+    queuedPlane.pos = {
+      x: thresholdPlane.pos.x - runwayDirection.x * 17 - runwayDirection.y * 9,
+      y: thresholdPlane.pos.y - runwayDirection.y * 17 + runwayDirection.x * 9,
+    };
+    queuedPlane.target = thresholdRunway;
+    const thresholdRelease = {
+      runway: thresholdRunway,
+      active: {
+        kind: 'blue', id: thresholdPlane.id, age: 30, pos: { ...thresholdPlane.pos },
+        spec: thresholdPlane.spec, target: thresholdRunway,
+      },
+      queued: {
+        kind: 'blue', id: queuedPlane.id, age: 0, pos: { ...queuedPlane.pos },
+        spec: queuedPlane.spec, target: thresholdRunway,
+      },
+    };
+
+    window.__scenarios = {
+      decision,
+      coordination,
+      shield,
+      spawnReservation,
+      thresholdRelease,
+    };
 
     const q = value => Math.round(value) + .5;
     const line = (from, to, color, width = 3, dash = []) => {
@@ -379,7 +466,7 @@ try {
       label(detail, 30, 122, palette.dim, 'left', 18);
     };
     const stageStrip = active => {
-      const stages = ['PLAN · 8.0 S', 'COORDINATE · 2 SWEEPS', 'CHECK · NEXT FRAME'];
+      const stages = ['PLAN · 8–14 S', 'COORDINATE · 4 SWEEPS', 'CHECK · NEXT FRAME'];
       const x = 720, y = 24, width = 145;
       stages.forEach((stageName, index) => {
         context.fillStyle = index === active ? '#123e46' : palette.panel;
@@ -408,7 +495,8 @@ try {
       sim.drawing = null;
       const planes = sourcePlanes.map(source => ({
         ...samples[source.kind], ...source, spec: samples[source.kind].spec,
-        pos: { ...source.pos }, path: [], target: null, solverTarget: source.target, state: 'flying', age: 30,
+        pos: { ...source.pos }, path: [], target: null, solverTarget: source.target,
+        state: 'flying', age: source.age ?? 30,
       }));
       sim.aircraft.splice(0, sim.aircraft.length, ...planes);
       return planes;
@@ -599,21 +687,26 @@ try {
       if (name === 'coordination-passes') {
         const scenario = window.__scenarios.coordination;
         const planes = usePlanes(scenario.planes);
-        frameScene(planes, ['yellow', 'blue', 'red'], .84);
+        frameScene(planes, ['yellow', 'blue', 'red'], 1.02);
+        const ordered = [...planes].sort((a, b) => a.age - b.age || a.id - b.id);
+        const orderLabel = plane => {
+          const rank = ordered.findIndex(item => item.id === plane.id);
+          return rank === 0 ? 'NEWEST' : rank === 1 ? 'NEXT' : 'OLDEST';
+        };
         let mode = 'direct';
         let progress = 0;
         if (time < 1.4) progress = time / 1.4;
         else if (time < 1.9) progress = 1;
-        else if (time < 2.4) progress = 1 - (time - 1.9) / .5;
-        else if (time < 3.9) mode = 'sweep0';
-        else if (time < 4.5) mode = 'hold0';
-        else if (time < 6) mode = 'sweep1';
+        else if (time < 2.2) progress = 1 - (time - 1.9) / .3;
+        else if (time < 3.7) mode = 'sweep0';
+        else if (time < 4.2) mode = 'hold0';
+        else if (time < 6) mode = 'converge';
         else if (time < 7.5) { mode = 'clear'; progress = (time - 6) / 1.5; }
         else { mode = 'land'; progress = (time - 7.5) / 4; }
-        const safeSeconds = Math.max(1.4, scenario.sweep1.time);
-        planes.forEach((plane, index) => {
+        const safeSeconds = Math.max(1.4, scenario.sweep3.time);
+        planes.forEach(plane => {
           const source = scenario.planes.find(item => item.id === plane.id);
-          const finalVelocity = source.passes[1].velocity;
+          const finalVelocity = source.passes[3].velocity;
           const clearPosition = {
             x: source.pos.x + finalVelocity.x * safeSeconds,
             y: source.pos.y + finalVelocity.y * safeSeconds,
@@ -622,19 +715,27 @@ try {
           else if (mode === 'clear') move(plane, source, finalVelocity, safeSeconds * smooth(progress));
           else if (mode === 'land') placeOnLandingRoute(plane, clearPosition, progress);
           else move(plane, source, finalVelocity, 0);
-          if (mode !== 'land') label(String.fromCharCode(65 + index), screen(plane.pos).x, screen(plane.pos).y - 42, palette.ink, 'center', 19);
+          if (mode !== 'land') {
+            label(orderLabel(plane), screen(plane.pos).x, screen(plane.pos).y - 45,
+              plane === ordered[0] ? palette.safe : palette.ink, 'center', 16);
+          }
           if (mode === 'hold0') {
             const origin = screen(plane.pos);
             arrow(origin, endpoint(plane, source.direct), palette.proposed, 3, [10, 7]);
             arrow(origin, endpoint(plane, source.passes[0].velocity), palette.ink, 6);
-          } else if (mode === 'sweep0' || mode === 'sweep1') {
+          } else if (mode === 'sweep0' || mode === 'converge') {
             const origin = screen(plane.pos);
             const previous = mode === 'sweep0' ? source.direct : source.passes[0].velocity;
-            const accepted = mode === 'sweep0' ? source.passes[0].velocity : source.passes[1].velocity;
-            const start = mode === 'sweep0' ? 2.4 : 4.5;
+            const accepted = mode === 'sweep0' ? source.passes[0].velocity : source.passes[3].velocity;
+            const start = mode === 'sweep0' ? 2.2 : 4.2;
+            const duration = mode === 'sweep0' ? 1.5 : 1.8;
             arrow(origin, endpoint(plane, previous), palette.proposed, 4, [10, 7]);
-            const active = Math.min(2, Math.floor((time - start) / 1.5 * planes.length));
-            if (index <= active) arrow(origin, endpoint(plane, accepted), index === active ? palette.safe : palette.ink, 6);
+            const active = Math.min(2, Math.floor((time - start) / duration * ordered.length));
+            const rank = ordered.findIndex(item => item.id === plane.id);
+            if (rank <= active) {
+              arrow(origin, endpoint(plane, accepted),
+                rank === active ? palette.safe : palette.ink, 6);
+            }
           }
         });
         if (mode === 'land') planes.forEach(targetMarker);
@@ -649,24 +750,24 @@ try {
           } else if (time >= 1.9) {
             panel('2 · COORDINATE THE WHOLE FIELD', 'REWIND', 'NOW UPDATE EACH AIRCRAFT AGAINST THE LATEST SHARED FIELD');
           } else {
-            panel('2 · COORDINATE THE WHOLE FIELD', 'REPLAY INDEPENDENT ROUTES', 'A / B / C IDENTIFY AIRCRAFT · ALL THREE VECTORS MOVE TOGETHER');
+            panel('2 · COORDINATE THE WHOLE FIELD', 'REPLAY INDEPENDENT ROUTES', 'ALL THREE CHOOSE ALONE · THEIR INDIVIDUAL ANSWERS CONFLICT');
           }
         } else if (mode === 'sweep0') {
-          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 1 · A → B → C', `ACCEPT EACH UPDATE IMMEDIATELY · FINAL GAP ${scenario.sweep0.clearance.toFixed(2)}`);
+          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 1 · NEWEST → NEXT → OLDEST', `ACCEPT EACH UPDATE IMMEDIATELY · FINAL GAP ${scenario.sweep0.clearance.toFixed(2)}`);
         } else if (mode === 'hold0') {
-          panel('2 · COORDINATE THE WHOLE FIELD', 'HOLD · COMPLETED FIRST-SWEEP FIELD', `ALL A / B / C UPDATES ARE NOW VISIBLE · GAP ${scenario.sweep0.clearance.toFixed(2)}`);
-        } else if (mode === 'sweep1') {
-          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 2 · A → B → C', 'EARLY AIRCRAFT NOW SEE THE COMPLETED FIRST-SWEEP FIELD');
+          panel('2 · COORDINATE THE WHOLE FIELD', 'FIRST SHARED FIELD COMPLETE', `THE NEW ARRIVAL CLAIMED SAFE SPACE FIRST · GAP ${scenario.sweep0.clearance.toFixed(2)}`);
+        } else if (mode === 'converge') {
+          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEPS 2–4 · REPEAT AND CONVERGE', 'EVERY AIRCRAFT RECHECKS AGAINST THE LATEST COMPLETE SHARED FIELD');
         } else if (mode === 'clear') {
           for (const plane of planes) {
             const source = scenario.planes.find(item => item.id === plane.id);
-            arrow(screen(plane.pos), endpoint(plane, source.passes[1].velocity, 1.1), palette.safe, 5);
+            arrow(screen(plane.pos), endpoint(plane, source.passes[3].velocity, 1.1), palette.safe, 5);
           }
-          panel('2 · COORDINATE THE WHOLE FIELD', 'THE SHARED FIELD CLEARS THE CONFLICT', `ALL THREE MOVE TOGETHER · MINIMUM GAP ${scenario.sweep1.clearance.toFixed(2)} ≥ 2.00`);
+          panel('2 · COORDINATE THE WHOLE FIELD', 'FOUR-SWEEP FIELD CLEARS THE CONFLICT', `ALL THREE MOVE TOGETHER · MINIMUM GAP ${scenario.sweep3.clearance.toFixed(2)} ≥ 2.00`);
         } else {
           for (const plane of planes) {
             const source = scenario.planes.find(item => item.id === plane.id);
-            const velocity = source.passes[1].velocity;
+            const velocity = source.passes[3].velocity;
             const clearPosition = { x: source.pos.x + velocity.x * safeSeconds, y: source.pos.y + velocity.y * safeSeconds };
             drawLandingRoute(plane, clearPosition);
           }
@@ -682,15 +783,16 @@ try {
         frameScene(
           planes,
           landing ? [...new Set(planes.map(plane => plane.kind))] : [],
-          landing ? .78 : 2.8,
+          landing ? .86 : 4.2,
         );
         const event = scenario.event;
         const controlled = planes.find(plane => plane.id === event.aircraftId);
         const threat = planes.find(plane => plane.id === event.threatId);
         const controlledSource = scenario.planes.find(plane => plane.id === event.aircraftId);
         const threatSource = scenario.planes.find(plane => plane.id === event.threatId);
-        const repaired = time >= 3.2;
-        const afterTick = time >= 5.4;
+        const repairSearch = time >= 3.2 && time < 4.6;
+        const repaired = time >= 4.6;
+        const afterTick = time >= 5.8;
         const controlledVelocity = repaired ? event.after : event.before;
         const controlledAfterTick = {
           x: controlledSource.pos.x + event.after.x / 60,
@@ -729,12 +831,30 @@ try {
         if (!repaired) {
           arrow(screen(controlledSource.pos), endpoint(controlled, event.before, .22), palette.proposed, 6, [10, 7]);
           arrow(screen(threatSource.pos), endpoint(threat, event.threatVelocity, .22), palette.ink, 4);
+          if (repairSearch) {
+            const scanProgress = clamp01((time - 3.2) / 1.4);
+            const scanIndex = Math.min(63, Math.floor(scanProgress * 64));
+            const scanAngle = scanIndex * Math.PI * 2 / 64;
+            const scanVelocity = {
+              x: Math.cos(scanAngle) * controlled.spec.speed,
+              y: Math.sin(scanAngle) * controlled.spec.speed,
+            };
+            arrow(screen(controlledSource.pos), endpoint(controlled, scanVelocity, .28),
+              palette.safe, 5);
+            label(`TEST HEADING ${String(scanIndex + 1).padStart(2, '0')} / 64`,
+              origin.x, origin.y - 105, palette.safe, 'center', 17);
+          }
           physicalDisc(controlledSource, beforePosition, colorFor(controlledSource.kind));
           physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(beforeA, nextB, palette.danger);
           cross({ x: (beforeA.x + nextB.x) / 2, y: (beforeA.y + nextB.y) / 2 });
           label('COLORED CIRCLES = WHERE THE PLANES WILL BE NEXT FRAME', innerWidth / 2, innerHeight - 38, palette.dim, 'center', 15);
-          panel('3 · ONE LAST CHECK BEFORE MOVING', time < 1.2 ? 'PREVIEW THE NEXT FRAME' : 'TOO CLOSE · DO NOT MOVE YET', `NEXT-FRAME GAP ${event.clearanceBefore.toFixed(3)} < REQUIRED 0.250`);
+          panel('5 · ONE LAST CHECK BEFORE MOVING',
+            repairSearch ? 'SEARCH 64 DIRECTIONS FOR THE SAFEST REPAIR'
+              : time < 1.2 ? 'PREVIEW THE NEXT FRAME' : 'TOO CLOSE · DO NOT MOVE YET',
+            repairSearch
+              ? 'THE AIRCRAFT HAVE NOT MOVED · ONLY CANDIDATE NEXT STEPS ARE CHANGING'
+              : `NEXT-FRAME GAP ${event.clearanceBefore.toFixed(3)} < REQUIRED 0.250`);
         } else if (!landing) {
           arrow(screen(controlledSource.pos), endpoint(controlled, event.before, .22), palette.proposed, 3, [10, 7]);
           arrow(screen(controlledSource.pos), endpoint(controlled, event.after, .22), palette.safe, 8);
@@ -744,20 +864,193 @@ try {
           bracket(afterA, nextB, palette.safe);
           label(afterTick ? 'THE SAFE PREVIEW IS NOW THE CURRENT FRAME' : 'COLORED CIRCLES = SAFER NEXT FRAME', innerWidth / 2, innerHeight - 38, afterTick ? palette.safe : palette.dim, 'center', 15);
           const repairPhase = time < 4.25 ? 'TURN YELLOW SLIGHTLY' : 'CHECK AGAIN · NOW SAFE';
-          panel('3 · ONE LAST CHECK BEFORE MOVING', afterTick ? 'MOVE BOTH PLANES ONE FRAME' : repairPhase, `AMBER = OLD DIRECTION · CYAN = SAFER DIRECTION · GAP ${event.clearanceAfter.toFixed(3)} > 0.250`);
+          panel('5 · ONE LAST CHECK BEFORE MOVING', afterTick ? 'MOVE BOTH PLANES ONE FRAME' : repairPhase, `AMBER = OLD DIRECTION · CYAN = SAFER DIRECTION · GAP ${event.clearanceAfter.toFixed(3)} > 0.250`);
         } else {
           drawLandingRoute(controlled, controlledAfterTick);
           drawLandingRoute(threat, threatAfterTick);
           const landingProgress = (time - 6.4) / 4.6;
+          box(screen(controlled.pos), 11, palette.safe, 4);
+          box(screen(threat.pos), 8, palette.ink, 3);
           if (landingProgress >= .96) planes.forEach(landedMark);
-          panel('3 · ONE LAST CHECK BEFORE MOVING', landingProgress >= .96 ? 'BOTH AIRCRAFT LANDED' : 'SAFE TO MOVE · NORMAL ROUTING RESUMES', 'THE FINAL CHECK CHANGED ONE STEP · NOT EITHER DESTINATION');
+          panel('5 · ONE LAST CHECK BEFORE MOVING', landingProgress >= .96 ? 'BOTH AIRCRAFT LANDED' : 'SAFE TO MOVE · NORMAL ROUTING RESUMES', 'THE FINAL CHECK CHANGED ONE STEP · NOT EITHER DESTINATION');
         }
       }
 
-      stageStrip(name === 'decision-field' ? 0 : name === 'coordination-passes' ? 1 : 2);
+      if (name === 'spawn-reservation') {
+        const scenario = window.__scenarios.spawnReservation;
+        const beforeSpawn = time < 6;
+        const landing = time >= 7.2;
+        const incomingSource = {
+          kind: scenario.warning.kind,
+          id: 9402,
+          age: 0,
+          pos: { ...scenario.warning.pos },
+          spec: samples[scenario.warning.kind].spec,
+          target: runwayFor(scenario.warning.kind),
+        };
+        const planes = usePlanes(beforeSpawn
+          ? [scenario.plane]
+          : [scenario.plane, incomingSource]);
+        const controlled = planes.find(plane => plane.id === scenario.plane.id);
+        const incoming = planes.find(plane => plane.id === incomingSource.id);
+        if (beforeSpawn) {
+          sim.spawnWarnings.push({
+            ...scenario.warning,
+            pos: { ...scenario.warning.pos },
+            warningRemaining: Math.max(0, scenario.warning.warningRemaining
+              * (1 - Math.max(0, time - 2.8) / 3.2)),
+          });
+          frameScene([
+            controlled,
+            { ...incomingSource, pos: { ...incomingSource.pos } },
+          ], ['blue'], 1.45);
+        } else {
+          frameScene(planes, ['blue', 'red'], landing ? .86 : 1.35);
+        }
+        const controlledStart = scenario.plane.pos;
+        const warningPoint = scenario.warning.pos;
+        const countdown = Math.max(0, scenario.warning.warningRemaining
+          * (1 - Math.max(0, time - 2.8) / 3.2));
+        if (time < 2.8) {
+          move(controlled, scenario.plane, scenario.direct.velocity, 0);
+          const projected = {
+            x: controlledStart.x + scenario.direct.velocity.x * scenario.warning.warningRemaining,
+            y: controlledStart.y + scenario.direct.velocity.y * scenario.warning.warningRemaining,
+          };
+          arrow(screen(controlledStart), screen(projected), palette.danger, 6, [10, 7]);
+          physicalDisc(controlled, projected, palette.danger);
+          box(screen(warningPoint), 15, palette.red, 4);
+          cross(screen(warningPoint));
+          label(`RED ARRIVES IN ${scenario.warning.warningRemaining.toFixed(1)} S`,
+            screen(warningPoint).x, screen(warningPoint).y - 35, palette.red, 'center', 18);
+          panel('3 · RESERVE SPACE FOR AIRCRAFT NOT HERE YET',
+            'DIRECT ROUTE OCCUPIES THE FUTURE ENTRY POINT',
+            `PROJECT BLUE TO THE WARNING TIME · CLEARANCE ${scenario.direct.clearance.toFixed(2)} < 0`);
+        } else if (beforeSpawn) {
+          const progress = smooth((time - 2.8) / 3.2);
+          move(controlled, scenario.plane, scenario.selected.velocity,
+            scenario.warning.warningRemaining * progress);
+          arrow(screen(controlled.pos), endpoint(controlled, scenario.selected.velocity, 1.2),
+            palette.safe, 7);
+          box(screen(warningPoint), 15, palette.red, 4);
+          label(`RED ARRIVES IN ${countdown.toFixed(1)} S`,
+            screen(warningPoint).x, screen(warningPoint).y - 35, palette.red, 'center', 18);
+          panel('3 · RESERVE SPACE FOR AIRCRAFT NOT HERE YET',
+            'BLUE CLEARS THE RESERVED ENTRY BEFORE COUNTDOWN ZERO',
+            `THE WARNING IS A FUTURE MOVING OBSTACLE · SELECTED CLEARANCE ${scenario.selected.clearance.toFixed(2)} ≥ 2`);
+        } else if (!landing) {
+          move(controlled, scenario.plane, scenario.selected.velocity,
+            scenario.warning.warningRemaining);
+          move(incoming, incomingSource, scenario.warning.velocity, time - 6);
+          physicalDisc(controlled, controlled.pos, palette.safe);
+          physicalDisc(incoming, incoming.pos, palette.red);
+          label('BLUE ALREADY CLEAR', screen(controlled.pos).x,
+            screen(controlled.pos).y - 45, palette.safe, 'center', 17);
+          label('RED ENTERS SAFELY', screen(incoming.pos).x,
+            screen(incoming.pos).y - 45, palette.red, 'center', 17);
+          panel('3 · RESERVE SPACE FOR AIRCRAFT NOT HERE YET',
+            'COUNTDOWN ZERO · THE RESERVED AIRCRAFT ENTERS',
+            'NO EMERGENCY TURN IS NEEDED BECAUSE THE CONFLICT WAS SOLVED BEFORE SPAWN');
+        } else {
+          const progress = (time - 7.2) / 4.4;
+          const blueClear = {
+            x: controlledStart.x + scenario.selected.velocity.x * scenario.warning.warningRemaining,
+            y: controlledStart.y + scenario.selected.velocity.y * scenario.warning.warningRemaining,
+          };
+          const redClear = {
+            x: incomingSource.pos.x + scenario.warning.velocity.x * 1.2,
+            y: incomingSource.pos.y + scenario.warning.velocity.y * 1.2,
+          };
+          placeOnLandingRoute(controlled, blueClear, progress);
+          placeOnLandingRoute(incoming, redClear, progress);
+          drawLandingRoute(controlled, blueClear);
+          drawLandingRoute(incoming, redClear);
+          if (progress >= .96) planes.forEach(landedMark);
+          panel('3 · RESERVE SPACE FOR AIRCRAFT NOT HERE YET',
+            progress >= .96 ? 'BOTH AIRCRAFT LANDED' : 'SAFE ENTRY · NORMAL ROUTING CONTINUES',
+            'BLUE → BLUE · RED → RED · THE WARNING CHANGED TIMING, NOT DESTINATIONS');
+        }
+      }
+
+      if (name === 'threshold-release') {
+        const scenario = window.__scenarios.thresholdRelease;
+        const planes = usePlanes([scenario.active, scenario.queued]);
+        const active = planes.find(plane => plane.id === scenario.active.id);
+        const queued = planes.find(plane => plane.id === scenario.queued.id);
+        frameScene(planes, ['blue'], 1.65);
+        const approach = scenario.runway.approach;
+        const end = scenario.runway.end;
+        const oldPhase = time < 5.2;
+        const newPhase = time >= 5.8;
+        let capacity = '12 / 12';
+        let activeLabel = 'AIRBORNE SLOT OCCUPIED';
+        if (oldPhase) {
+          const progress = smooth(time / 4.7);
+          if (progress < .58) {
+            active.pos = lerpPoint(scenario.active.pos, approach, progress / .58);
+            active.heading = angleTo(scenario.active.pos, approach);
+          } else {
+            active.pos = lerpPoint(approach, end, (progress - .58) / .42);
+            active.heading = angleTo(approach, end);
+          }
+          queued.pos = { ...scenario.queued.pos };
+          setPath(queued, velocityTo(queued, approach));
+          arrow(screen(scenario.active.pos), screen(approach), palette.blue, 5, [9, 7]);
+          arrow(screen(approach), screen(end), palette.proposed, 6, [9, 7]);
+          label('OLD: SECOND AIRBORNE WAYPOINT', screen(end).x,
+            screen(end).y - 30, palette.proposed, 'center', 16);
+          label('WAITING · CAPACITY FULL', screen(queued.pos).x,
+            screen(queued.pos).y - 42, palette.dim, 'center', 16);
+          if (progress >= .98) {
+            capacity = '11 / 12';
+            activeLabel = 'SLOT FINALLY RELEASED AT RUNWAY END';
+          }
+          panel('4 · RELEASE CAPACITY AT THE APPROACH POINT',
+            time < 4.7 ? 'OLD ROUTE · LAND, THEN KEEP AN AIRBORNE RUNWAY-END WAYPOINT' : 'OLD ROUTE FINALLY RELEASES THE SLOT',
+            `${activeLabel} · INBOUND CAPACITY ${capacity}`);
+        } else if (!newPhase) {
+          active.pos = { ...scenario.active.pos };
+          queued.pos = { ...scenario.queued.pos };
+          panel('4 · RELEASE CAPACITY AT THE APPROACH POINT',
+            'REWIND · REMOVE THE REDUNDANT SECOND WAYPOINT',
+            'THE SIMULATOR ALREADY OWNS THE GROUND ROUTE AFTER THE APPROACH POINT');
+        } else {
+          const progress = smooth((time - 5.8) / 2.8);
+          active.pos = lerpPoint(scenario.active.pos, approach, progress);
+          active.heading = angleTo(scenario.active.pos, approach);
+          const released = progress >= .96;
+          if (released) {
+            active.state = 'landing';
+            const groundProgress = smooth((time - 8.5) / 2.5);
+            active.pos = lerpPoint(approach, end, groundProgress);
+            active.heading = angleTo(approach, end);
+            queued.pos = lerpPoint(scenario.queued.pos, scenario.active.pos, groundProgress);
+            queued.heading = angleTo(scenario.queued.pos, scenario.active.pos);
+            capacity = groundProgress > .05 ? '12 / 12' : '11 / 12';
+          } else {
+            queued.pos = { ...scenario.queued.pos };
+          }
+          arrow(screen(scenario.active.pos), screen(approach), palette.safe, 7);
+          box(screen(approach), 12, palette.safe, 4);
+          label('SIMULATOR ACCEPTS LANDING HERE', screen(approach).x,
+            screen(approach).y - 36, palette.safe, 'center', 17);
+          label(released ? 'NEXT ARRIVAL ENTERS' : 'WAITING', screen(queued.pos).x,
+            screen(queued.pos).y - 42, released ? palette.blue : palette.dim, 'center', 16);
+          panel('4 · RELEASE CAPACITY AT THE APPROACH POINT',
+            released ? 'LANDING RECORDED · SLOT RELEASED IMMEDIATELY' : 'NEW ROUTE · COMMIT ONLY TO THE APPROACH',
+            released
+              ? `GROUND MOVEMENT CONTINUES OUTSIDE AIRBORNE CAPACITY · INBOUND CAPACITY ${capacity}`
+              : 'NO SPEED, SCORE, COLLISION, OR TAXI RULE CHANGED');
+        }
+      }
+
+      if (name === 'decision-field' || name === 'coordination-passes'
+          || name === 'safety-shield') {
+        stageStrip(name === 'decision-field' ? 0 : name === 'coordination-passes' ? 1 : 2);
+      }
     };
 
-    const matching = Object.values(window.__scenarios).every(scenario =>
+    const matching = [decision, coordination, shield].every(scenario =>
       scenario.planes.every(plane => plane.target.color === plane.kind));
     return {
       matchingRunways: matching,
@@ -768,10 +1061,11 @@ try {
       },
       coordination: {
         kinds: coordination.planes.map(plane => plane.kind),
+        ages: coordination.planes.map(plane => plane.age),
         passDeltas: coordination.deltas,
         directClearance: coordination.direct.clearance,
         sweep0Clearance: coordination.sweep0.clearance,
-        sweep1Clearance: coordination.sweep1.clearance,
+        sweep3Clearance: coordination.sweep3.clearance,
       },
       shield: {
         kind: 'deterministic constructed next-tick test',
@@ -780,13 +1074,34 @@ try {
         clearanceAfter: shield.event.clearanceAfter,
         finalInterventions: shield.event.interventions,
       },
+      spawnReservation: {
+        controlledKind: spawnReservation.plane.kind,
+        warningKind: spawnReservation.warning.kind,
+        directClearance: spawnReservation.direct.clearance,
+        selectedClearance: spawnReservation.selected.clearance,
+      },
+      thresholdRelease: {
+        kind: thresholdRelease.active.kind,
+        targetColor: thresholdRelease.active.target.color,
+      },
     };
   });
 
   if (!audit.matchingRunways) throw new Error('Semantic audit failed: aircraft/runway color mismatch.');
   console.log('Semantic audit:', JSON.stringify(audit, null, 2));
 
-  for (const name of ['decision-field', 'coordination-passes', 'safety-shield']) {
+  const defaultNames = [
+    'decision-field',
+    'coordination-passes',
+    'spawn-reservation',
+    'threshold-release',
+    'safety-shield',
+  ];
+  const captureNames = process.env.CAPTURE_NAMES
+    ? process.env.CAPTURE_NAMES.split(',').map(name => name.trim()).filter(Boolean)
+    : defaultNames;
+  for (const name of captureNames) {
+    if (!defaultNames.includes(name)) throw new Error(`Unknown explainer: ${name}`);
     const directory = path.join(temporaryDir, name);
     fs.mkdirSync(directory, { recursive: true });
     for (let frame = 0; frame < frameCount; frame++) {

@@ -54,10 +54,10 @@ default-window runs or leaderboard scores that use different bounds.
 | --- | ---: |
 | Fixed evaluation runs | 5 × 20 simulated minutes |
 | Survived | 5 / 5 |
-| Mean steady-state throughput | 62.292 operations/min |
-| Worst-seed throughput | 60.732 operations/min |
-| Mean path inflation | 1.222× |
-| Composite metric | **61.857780** |
+| Mean steady-state throughput | 64.745 operations/min |
+| Worst-seed throughput | 64.465 operations/min |
+| Mean path inflation | 1.077× |
+| Composite metric | **64.660114** |
 
 An operation is one landing or departure. Evaluation discards the first five
 minutes of each run so the reported pace measures the saturated system rather
@@ -69,15 +69,19 @@ contains bundle/controller hashes, definitions, bounds, seeds, and every run.
 | Controller | Survived | Mean ops/min | Composite | Shield replacements |
 | --- | ---: | ---: | ---: | ---: |
 | Direct approach only | 0 / 5 | — | 0 | 0 |
-| One planning sweep + shield | 5 / 5 | 54.332 | 54.071 | 10,545 |
-| Two planning sweeps, no shield | 4 / 5 | 54.265 | 0 | 0 |
-| Two planning sweeps + shield + full runway roll | 5 / 5 | 54.972 | 54.704 | 9,243 |
-| **Two planning sweeps + shield + threshold release** | **5 / 5** | **62.292** | **61.858** | **14,594** |
+| One planning sweep | 5 / 5 | 63.745 | 63.494 | 10,765 |
+| Two planning sweeps | 5 / 5 | 60.999 | 60.117 | 9,899 |
+| Four sweeps, stable ID order | 5 / 5 | 64.012 | 63.909 | 13,235 |
+| Four sweeps, uniform 12-second warning horizon | 5 / 5 | 64.065 | 63.684 | 10,926 |
+| Four sweeps, full airborne runway roll | 5 / 5 | 55.386 | 55.209 | 8,798 |
+| **Four sweeps, newest first, tuned horizons, threshold release** | **5 / 5** | **64.745** | **64.660** | **11,626** |
 
-The discarded orbit/merge architecture predates the fixed evaluator, so no
-comparable score was retained; claims about its complexity are qualitative. The
-reproducible ablations above isolate the mechanics that remain in the final
-controller.
+The sequential update is not a monotonic optimizer: two sweeps can settle into a
+worse local field than one. Four sweeps recover the throughput and give early
+decisions enough chances to react to the completed field. The remaining rows
+change one final-controller choice at a time. The discarded orbit/merge
+architecture predates the fixed evaluator, so claims about it remain
+qualitative.
 
 ## 1. Getting below the interface
 
@@ -182,9 +186,9 @@ inside the safe tier. Unsafe candidates are graded continuously by clearance.
 The implementation is:
 
 ```js
-score = (clearance >= 2 ? 10_000 : clearance * 100)
+score = (clearance >= 2 ? 240 : clearance * 100)
       + 21 * cos(offset)
-      - abs(turn);
+      - class_turn_weight * abs(turn);
 ```
 
 ## 4. Independent avoidance is not coordination
@@ -193,34 +197,33 @@ Selecting a safe velocity once per plane is insufficient. A later plane can
 choose a velocity that invalidates an earlier plane's calculation.
 
 The controller treats the current velocity field as a joint solution and runs
-two sequential best-response sweeps. Under the fixed five-seed evaluator, two
-sweeps raised mean throughput from 54.332 to 54.972 operations/min relative to
-one sweep and reduced shield replacements from 10,545 to 9,243:
+four sequential best-response sweeps. Aircraft are visited from youngest to
+oldest. A new arrival therefore reserves a viable corridor before older,
+already-stable traffic consumes the available choices:
 
 ```text
 initialize from current paths
 
-repeat 2 times:
-    for each flying aircraft in stable ID order:
+repeat 4 times:
+    for each flying aircraft from newest to oldest:
         evaluate 48 headings against the latest field
         replace that aircraft's velocity immediately
 ```
 
 Each decision becomes input to the next one. Repeating the sweep lets changes
-propagate back through the field without a combinatorial joint search.
+propagate back through the field without a combinatorial joint search. In the
+isolated ablation, replacing newest-first order with stable ID order lowers mean
+throughput from 64.745 to 64.012 operations/min.
 
-![Two sequential best-response sweeps across yellow, blue, and red aircraft](docs/coordination-passes.gif)
+![Four newest-first best-response sweeps across yellow, blue, and red aircraft](docs/coordination-passes.gif)
 
-The three-plane scene uses one production-rendered aircraft of each type. Every
-route is paired with its same-color runway. The independent direct field first
-replays to a measured conflict. The first sequential sweep turns it into a safe
-joint field; the second revisits early aircraft against the now-complete first
-field. Dashed amber vectors are proposals and solid cyan or cream vectors are
-accepted updates. The animation replays only recomputed, completed fields.
-Once the shared field has cleared the conflict, the overlays drop away and all
-three aircraft continue to their same-color runways. This last phase is included
-to make the purpose of coordination explicit: preserve safe access to every
-landing, not merely produce three non-intersecting arrows.
+The three-plane scene uses one production-rendered aircraft of each type and
+labels their actual planning order. The independent direct field first reaches
+a measured conflict. Sweep one accepts updates immediately from newest to
+oldest; sweeps two through four repeat that order against increasingly complete
+fields. Dashed amber vectors are proposals and solid cyan or cream vectors are
+accepted updates. The measured final field clears the conflict, then all three
+aircraft continue to their same-color runways.
 
 ## 5. Aircraft that do not exist yet still matter
 
@@ -230,12 +233,23 @@ safe now but occupied when the new aircraft materializes.
 
 For a warning arriving after `τ` seconds, the candidate aircraft is projected to
 its position at `τ`. The same closest-approach calculation then runs against the
-incoming plane's known velocity over a seven-second horizon. Spawn warnings are
-therefore ordinary moving obstacles shifted into the future.
+incoming plane's known velocity. The warning horizons are 12 seconds for yellow,
+14 for blue, and 9 for red; red receives an additional 0.40–0.45 second
+class-dependent entry grace. The candidate horizon is capped when a direct
+landing would remove the aircraft sooner.
 
 Departures are included in the same velocity field at their fixed 10.5-unit
 speed. Arrivals, departures, and not-yet-visible aircraft are evaluated by one
 pairwise model.
+
+![A blue aircraft clears a future red spawn point before the warning countdown reaches zero](docs/spawn-reservation.gif)
+
+The animation is a constructed state executed by the production controller. It
+first projects blue's direct route to the exact red warning time and records a
+negative clearance. The selected blue velocity clears the reserved entry point;
+red then materializes using its native sprite and both aircraft finish at their
+matching runways. Replacing the tuned class horizons with 12 seconds for every
+class lowers the composite metric from 64.660 to 63.684.
 
 ## 6. Commit late, release at the threshold
 
@@ -246,12 +260,17 @@ to negotiate.
 The controller commits to the runway only when:
 
 ```text
-angular offset < 0.05 rad  AND  predicted clearance >= 2
+angular offset < 0.05 rad  AND  predicted clearance >= 1.8
 ```
 
 Otherwise it publishes a long waypoint in the selected direction and solves
 again one frame later. The apparent smoothness comes from continuous
 replanning, not from long-lived routes.
+
+The implementation uses `1.8` as the final commitment threshold after the
+candidate has already competed in the `2.0` safe tier. This small hysteresis
+prevents a route oscillating at the boundary between temporary guidance and
+landing commitment.
 
 Once committed, the airborne route ends at the runway approach threshold. At
 that point the unchanged simulator records the landing and transfers the
@@ -260,10 +279,18 @@ kept the runway end as a second airborne waypoint. That fixed runway roll held
 one of the simulator's twelve inbound slots for another 7–9 seconds after the
 landing was already inevitable.
 
-Removing that redundant waypoint is the main throughput gain: the five-seed mean
-rose from 54.972 to 62.292 operations/min, and every measured seed exceeded 60.
-Aircraft speeds, scoring, collision detection, spawn timing, taxi routes, and
-departure scheduling are unchanged.
+Removing that redundant waypoint remains the largest isolated throughput gain:
+the five-seed mean rises from 55.386 to 64.745 operations/min. Aircraft speeds,
+scoring, collision detection, spawn timing, taxi routes, and departure
+scheduling are unchanged.
+
+![The old airborne runway-end waypoint releases an inbound slot later than the simulator's landing-acceptance point](docs/threshold-release.gif)
+
+The square in the animation is the simulator's actual runway approach point,
+which is slightly before the painted runway texture. With the old two-waypoint
+route the aircraft remains in airborne capacity until the runway-end waypoint.
+With threshold release, the unchanged simulator accepts the landing at the
+approach point, owns the subsequent ground movement, and admits the next arrival.
 
 ## 7. One last check before moving
 
@@ -298,12 +325,12 @@ repeat 4 times:
             test 64 headings and keep the safest
 ```
 
-The teaching case starts with `0.151` clearance and finishes with `0.303`. It
+The teaching case starts with `0.134` clearance and finishes with `0.318`. It
 needs one replacement; a general frame may need more.
 
-Across the five final evaluation runs the counter recorded 9,243 velocity
-replacements over 360,005 controlled frames: 2.57 replacements per 100 frames,
-or 1.54 per simulated second. The counter is per aircraft replacement, not per
+Across the five final evaluation runs the counter recorded 11,626 velocity
+replacements over 360,005 controlled frames: 3.23 replacements per 100 frames,
+or 1.94 per simulated second. The counter is per aircraft replacement, not per
 unique frame, so calling shield activation “rare” would be misleading.
 
 ## 8. Evaluation
@@ -357,7 +384,7 @@ as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
 capture-hero.mjs         30-minute warm-up + three-minute fixed-step hero
-capture-explainers.mjs   staged search, coordination, and shield animations
+capture-explainers.mjs   five controller-recorded technical animations
 evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
 evaluation/fixed/        pinned production model/map modules
 evaluation/results/      machine-readable result with hashes and per-seed rows
@@ -374,8 +401,8 @@ renderer. Production aircraft and runway assets stay active on a deliberately
 simplified dark field; live spawning is paused; and the actual controller is
 instrumented during capture. Capture fails if an aircraft is paired with the
 wrong runway, a decision replay uses a different velocity field, a completed
-coordination field violates its stated clearance, or the shield animation differs
-from the final velocity map.
+coordination field violates its stated clearance, a spawn reservation does not
+clear its warning, or the shield animation differs from the final velocity map.
 
 ## Run
 
@@ -413,7 +440,7 @@ The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
 npm run capture:hero       # fast-forward 30 min, record the next 3 min at 1×
-npm run capture:explainers # rebuild all three staged technical GIFs
+npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
 Hero defaults are seed `101`, `TARGET_HOURS=0.5`, `CAPTURE_SECONDS=180`, and
