@@ -486,16 +486,6 @@ try {
       line({ x: a.x - 8, y: a.y - 8 }, { x: a.x + 8, y: a.y + 8 }, color, 3);
       line({ x: b.x - 8, y: b.y - 8 }, { x: b.x + 8, y: b.y + 8 }, color, 3);
     };
-    const gapMeter = (value, color) => {
-      const x = 860, y = 84, width = 300, maximum = .5;
-      line({ x, y }, { x: x + width, y }, palette.edge, 5);
-      const thresholdX = x + width * .25 / maximum;
-      line({ x: thresholdX, y: y - 18 }, { x: thresholdX, y: y + 18 }, palette.ink, 3);
-      label('MIN .250', thresholdX, y - 25, palette.ink, 'center', 14);
-      const markerX = x + width * Math.min(maximum, Math.max(0, value)) / maximum;
-      box({ x: markerX, y }, 8, color, 4);
-      label(value.toFixed(3), markerX, y + 34, color, 'center', 15);
-    };
     const disc = (point, radius, color, width = 3) => {
       context.beginPath();
       context.arc(Math.round(point.x), Math.round(point.y), Math.max(2, radius), 0, Math.PI * 2);
@@ -509,28 +499,6 @@ try {
       const edge = screen({ x: position.x + plane.spec.radius, y: position.y });
       disc(center, Math.hypot(edge.x - center.x, edge.y - center.y), color, 3);
     };
-    const shieldInset = (a, b, clearance, safe) => {
-      const x = 770, y = 420, width = 400, height = 220;
-      context.fillStyle = palette.panel;
-      context.fillRect(x, y, width, height);
-      context.strokeStyle = palette.edge;
-      context.lineWidth = 3;
-      context.strokeRect(x, y, width, height);
-      label(safe ? 'WITH SHIELD: SAFE NEXT TICK' : 'WITHOUT SHIELD: TOO CLOSE NEXT TICK', x + 20, y + 32, safe ? palette.safe : palette.danger, 'left', 16);
-      label('CIRCLES = THE GAME’S COLLISION BOUNDARIES', x + 20, y + 56, palette.dim, 'left', 12);
-      const scale = 26;
-      const first = { x: x + 32 + a.spec.radius * scale, y: y + 128 };
-      const second = { x: first.x + (a.spec.radius + b.spec.radius + clearance) * scale, y: y + 128 };
-      disc(first, a.spec.radius * scale, colorFor(a.kind), 4);
-      disc(second, b.spec.radius * scale, colorFor(b.kind), 4);
-      label(a.kind.toUpperCase(), first.x, first.y + 5, colorFor(a.kind), 'center', 12);
-      label(b.kind.toUpperCase(), second.x, second.y + 5, colorFor(b.kind), 'center', 12);
-      const leftEdge = { x: first.x + a.spec.radius * scale, y: first.y };
-      const rightEdge = { x: second.x - b.spec.radius * scale, y: second.y };
-      bracket(leftEdge, rightEdge, safe ? palette.safe : palette.danger);
-      label(`EDGE GAP ${clearance.toFixed(3)}`, x + width / 2, y + 202, safe ? palette.safe : palette.danger, 'center', 15);
-    };
-
     window.__renderScenario = (name, time) => {
       context.clearRect(0, 0, innerWidth, innerHeight);
 
@@ -631,7 +599,7 @@ try {
       if (name === 'coordination-passes') {
         const scenario = window.__scenarios.coordination;
         const planes = usePlanes(scenario.planes);
-        frameScene(planes, ['yellow', 'blue', 'red'], 1.05);
+        frameScene(planes, ['yellow', 'blue', 'red'], .84);
         let mode = 'direct';
         let progress = 0;
         if (time < 1.4) progress = time / 1.4;
@@ -710,7 +678,12 @@ try {
       if (name === 'safety-shield') {
         const scenario = window.__scenarios.shield;
         const planes = usePlanes(scenario.planes);
-        frameScene(planes, [...new Set(planes.map(plane => plane.kind))], .9);
+        const landing = time >= 6.4;
+        frameScene(
+          planes,
+          landing ? [...new Set(planes.map(plane => plane.kind))] : [],
+          landing ? .78 : 2.8,
+        );
         const event = scenario.event;
         const controlled = planes.find(plane => plane.id === event.aircraftId);
         const threat = planes.find(plane => plane.id === event.threatId);
@@ -718,7 +691,6 @@ try {
         const threatSource = scenario.planes.find(plane => plane.id === event.threatId);
         const repaired = time >= 3.2;
         const afterTick = time >= 5.4;
-        const landing = time >= 6.4;
         const controlledVelocity = repaired ? event.after : event.before;
         const controlledAfterTick = {
           x: controlledSource.pos.x + event.after.x / 60,
@@ -742,8 +714,9 @@ try {
         const origin = screen(controlled.pos);
         const threatOrigin = screen(threat.pos);
         if (!landing) {
-          label('A', origin.x, origin.y - 52, palette.ink, 'center', 22);
-          label('B', threatOrigin.x, threatOrigin.y + 68, palette.ink, 'center', 22);
+          const tickLabel = afterTick ? 'n+1' : 'n';
+          label(`${controlled.kind.toUpperCase()} · TICK ${tickLabel}`, origin.x - 42, origin.y - 72, colorFor(controlled.kind), 'center', 17);
+          label(`${threat.kind.toUpperCase()} · TICK ${tickLabel}`, threatOrigin.x + 48, threatOrigin.y + 84, colorFor(threat.kind), 'center', 17);
         } else {
           planes.forEach(targetMarker);
         }
@@ -754,35 +727,35 @@ try {
         const afterPosition = { x: controlledSource.pos.x + event.after.x / 60, y: controlledSource.pos.y + event.after.y / 60 };
         const threatPosition = { x: threatSource.pos.x + event.threatVelocity.x / 60, y: threatSource.pos.y + event.threatVelocity.y / 60 };
         if (!repaired) {
-          arrow(screen(controlledSource.pos), endpoint(controlled, event.before, 1.4), palette.proposed, 6, [10, 7]);
-          arrow(screen(threatSource.pos), endpoint(threat, event.threatVelocity, 1.4), palette.ink, 4);
+          arrow(screen(controlledSource.pos), endpoint(controlled, event.before, .22), palette.proposed, 6, [10, 7]);
+          arrow(screen(threatSource.pos), endpoint(threat, event.threatVelocity, .22), palette.ink, 4);
           physicalDisc(controlledSource, beforePosition, colorFor(controlledSource.kind));
           physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(beforeA, nextB, palette.danger);
           cross({ x: (beforeA.x + nextB.x) / 2, y: (beforeA.y + nextB.y) / 2 });
-          panel('3 · CHECK THE NEXT SIMULATOR TICK', time < 1.2 ? 'THE 8-SECOND PLANNER HAS FINISHED' : 'BUT ITS VERY NEXT STEP IS TOO CLOSE', `LONG-HORIZON FIELD PASSED · EXACT NEXT-TICK GAP ${event.clearanceBefore.toFixed(3)} < 0.250`);
-          shieldInset(controlledSource, threatSource, event.clearanceBefore, false);
+          label('COLORED CIRCLES = PHYSICAL BOUNDARIES AT TICK n+1', innerWidth / 2, innerHeight - 38, palette.dim, 'center', 15);
+          panel('3 · CHECK THE NEXT SIMULATOR TICK', time < 1.2 ? 'THE 8-SECOND PLANNER CHOSE ITS BEST FIELD' : 'EXACT NEXT-TICK BUFFER STILL FAILS', `PREVIEW TICK n+1 · EDGE GAP ${event.clearanceBefore.toFixed(3)} < REQUIRED 0.250`);
         } else if (!landing) {
-          arrow(screen(controlledSource.pos), endpoint(controlled, event.before, 1.4), palette.proposed, 3, [10, 7]);
+          arrow(screen(controlledSource.pos), endpoint(controlled, event.before, .22), palette.proposed, 3, [10, 7]);
           if (!afterTick) {
             const fanOrigin = screen(controlledSource.pos);
             for (let index = 0; index < 64; index++) {
               const angle = index / 64 * Math.PI * 2;
               const end = screen({
-                x: controlledSource.pos.x + Math.cos(angle) * 4.2,
-                y: controlledSource.pos.y + Math.sin(angle) * 4.2,
+                x: controlledSource.pos.x + Math.cos(angle) * 1.8,
+                y: controlledSource.pos.y + Math.sin(angle) * 1.8,
               });
               line(fanOrigin, end, palette.edge, 1);
             }
           }
-          arrow(screen(controlledSource.pos), endpoint(controlled, event.after, 1.4), palette.safe, 8);
+          arrow(screen(controlledSource.pos), endpoint(controlled, event.after, .22), palette.safe, 8);
           box(beforeA, 5, palette.proposed, 2);
           physicalDisc(controlledSource, afterPosition, colorFor(controlledSource.kind));
           physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(afterA, nextB, palette.safe);
           const repairPhase = time < 4.25 ? 'PASS 1 / 4 · SEARCH 64 HEADINGS' : 'PASSES 2–4 · RECHECK UPDATED FIELD';
-          panel('3 · CHECK THE NEXT SIMULATOR TICK', afterTick ? 'SIMULATOR ADVANCES ONE SAFE TICK' : repairPhase, `AMBER = PLANNER PATH · CYAN = YELLOW OVERRIDE · GAP ${event.clearanceAfter.toFixed(3)} > 0.250`);
-          shieldInset(controlledSource, threatSource, event.clearanceAfter, true);
+          label(afterTick ? 'AIRCRAFT ARE NOW AT TICK n+1' : 'COLORED CIRCLES = REPAIRED TICK n+1', innerWidth / 2, innerHeight - 38, afterTick ? palette.safe : palette.dim, 'center', 15);
+          panel('3 · CHECK THE NEXT SIMULATOR TICK', afterTick ? 'SIMULATOR ADVANCES ONE SAFE TICK' : repairPhase, `AMBER = PLANNER CHOICE · CYAN = YELLOW OVERRIDE · GAP ${event.clearanceAfter.toFixed(3)} > 0.250`);
         } else {
           drawLandingRoute(controlled, controlledAfterTick);
           drawLandingRoute(threat, threatAfterTick);

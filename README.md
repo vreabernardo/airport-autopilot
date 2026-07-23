@@ -252,16 +252,23 @@ Otherwise it publishes a long waypoint in the selected direction and solves
 again one frame later. The apparent smoothness comes from continuous
 replanning, not from long-lived routes.
 
-## 7. Recheck the frame the simulator will actually sample
+## 7. Verify the exact next tick before advancing
 
-The horizon planner is sequential and optimizes an eight-second closest-approach
-criterion, not the exact state transition the simulator will consume next. The
-completed field therefore needs a separate one-tick invariant check.
+Planning and verification answer different questions:
 
-The shield projects every pair one frame forward. At clearance `≤ 0.25`, it
-searches 64 evenly spaced headings and replaces the threatened aircraft's
-velocity with the safest immediate alternative. It runs four sequential passes,
-so a frame may repair more than one aircraft and later repairs see earlier ones:
+| Stage | Question | Lookahead | Search |
+| --- | --- | ---: | ---: |
+| Planner | Which velocity is best over the local traffic horizon? | 8 seconds | 48 headings, two coordination sweeps |
+| Verifier | Will the completed field preserve the buffer on the next simulator step? | 1/60 second | 64 repair headings, four passes |
+
+The planner always returns its best available field, including in a crowded
+state where no candidate is ideal. Before the simulator consumes that field, the
+verifier freezes it and projects every aircraft forward by exactly one tick.
+
+If any projected pair has edge clearance `≤ 0.25`, the verifier searches 64
+evenly spaced headings and replaces the threatened aircraft's velocity with the
+safest immediate alternative. It runs four sequential passes because one repair
+changes the field seen by every later aircraft:
 
 ```text
 repeat 4 times:
@@ -274,16 +281,14 @@ repeat 4 times:
 
 ![A deterministic next-tick buffer violation between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
 
-This is deliberately not another long-horizon planner. It is a narrow invariant
-check over the state the simulation is about to consume. The animation is a
-deterministic constructed next-tick test rendered by the production game. Its
-displayed before-field, final after-field, and clearances are captured around
-the complete four-pass shield—not an intermediate repair. This selected teaching
-case has exactly one replacement; general frames may have more. The circles and
-inset show physical collision radii because the production sprites are larger
-than their collision geometry. The sequence then advances the safe tick, resumes
-ordinary planning, and lands both aircraft on their original runways. The shield
-changes one simulator tick; it does not assign a new route or destination.
+The animation is a deterministic constructed test rendered by the production
+game. Aircraft sprites show the current frame (`tick n`); colored circles show
+their physical collision boundaries one frame later (`tick n+1`). The first
+projection leaves only `0.151` units of edge clearance, below the required
+`0.250`. Pass 1 changes yellow's heading; passes 2–4 recheck that updated field;
+the final projection has `0.303` clearance. The simulator then advances one
+tick, ordinary planning resumes, and both aircraft land on their original
+runways. This teaching case has one replacement; a general frame may have more.
 
 Across the five final evaluation runs the counter recorded 9,243 velocity
 replacements over 360,005 controlled frames: 2.57 replacements per 100 frames,
