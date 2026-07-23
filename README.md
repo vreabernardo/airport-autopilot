@@ -164,7 +164,10 @@ engine. Both aircraft use their native sprites and target the runway matching
 their type. The lines are not an artist's reconstruction: the capture invokes
 the production controller, rejects the unsafe direct candidate, and renders
 the measured closest approach and the selected safe velocity. The choice is
-recomputed on the next frame.
+recomputed on the next frame. The final phase continues the teaching replay
+after the conflict clears: blue turns back to the blue approach, red keeps the
+red approach, and both visibly finish on their matching runways. The detour is
+one decision, not a new destination.
 
 Candidate ranking has two layers:
 
@@ -213,6 +216,10 @@ replays to a measured conflict. The first sequential sweep turns it into a safe
 joint field; the second revisits early aircraft against the now-complete first
 field. Dashed amber vectors are proposals and solid cyan or cream vectors are
 accepted updates. The animation replays only recomputed, completed fields.
+Once the shared field has cleared the conflict, the overlays drop away and all
+three aircraft continue to their same-color runways. This last phase is included
+to make the purpose of coordination explicit: preserve safe access to every
+landing, not merely produce three non-intersecting arrows.
 
 ## 5. Aircraft that do not exist yet still matter
 
@@ -274,7 +281,9 @@ displayed before-field, final after-field, and clearances are captured around
 the complete four-pass shield—not an intermediate repair. This selected teaching
 case has exactly one replacement; general frames may have more. The circles and
 inset show physical collision radii because the production sprites are larger
-than their collision geometry.
+than their collision geometry. The sequence then advances the safe tick, resumes
+ordinary planning, and lands both aircraft on their original runways. The shield
+changes one simulator tick; it does not assign a new route or destination.
 
 Across the five final evaluation runs the counter recorded 9,243 velocity
 replacements over 360,005 controlled frames: 2.57 replacements per 100 frames,
