@@ -4,16 +4,27 @@
   window.__apStop = false;
   window.__apStats = { frames: 0, shieldInterventions: 0 };
 
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
   const planeSpecs = {
     yellow: { speed: 7, radius: 2.4 },
     blue: { speed: 8, radius: 2.6 },
     red: { speed: 9, radius: 2.8 },
   };
-  const headings = Array.from({ length: 48 }, (_, k) => {
-    const offset = k === 0 ? 0 : (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 2 * Math.PI / 48;
-    return { offset, cos: Math.cos(offset), sin: Math.sin(offset) };
-  });
+  const headingTables = new Map();
+  const offsetTable = (count, reverse = false) => {
+    const key = `${count}:${reverse}`;
+    if (!headingTables.has(key)) {
+      headingTables.set(key, Array.from({ length: count }, (_, k) => {
+        const offset = k === 0
+          ? 0
+          : (k % 2 ? 1 : -1) * (reverse ? -1 : 1)
+            * Math.ceil(k / 2) * 2 * Math.PI / count;
+        return { offset, cos: Math.cos(offset), sin: Math.sin(offset) };
+      }));
+    }
+    return headingTables.get(key);
+  };
   const shieldHeadings = Array.from({ length: 64 }, (_, k) => {
     const angle = 2 * Math.PI * k / 64;
     return { angle, cos: Math.cos(angle), sin: Math.sin(angle) };
@@ -35,12 +46,16 @@
     if (window.__apStop || !sim.map || sim.phase !== 'playing') return;
     window.__apStats.frames++;
     const options = window.__apOptions || {};
-    const planningPasses = options.directOnly ? 1 : (options.planningPasses ?? 2);
-    const candidateHeadings = options.directOnly ? [headings[0]] : headings;
+    const planningPasses = options.directOnly ? 1 : (options.planningPasses ?? 4);
+    const headings = options.headings ?? 48;
+    const candidateHeadings = options.directOnly
+      ? [offsetTable(headings)[0]]
+      : offsetTable(headings);
     const shieldPasses = options.shieldPasses ?? 4;
     const runways = Object.fromEntries(sim.map.runways.map(runway => [runway.color, runway]));
     const airborne = sim.aircraft.filter(ac => ac.state === 'flying' || ac.state === 'departing');
-    const flying = airborne.filter(ac => ac.state === 'flying').sort((a, b) => a.id - b.id);
+    const flying = airborne.filter(ac => ac.state === 'flying')
+      .sort((a, b) => a.age - b.age || a.id - b.id);
     const warnings = sim.spawnWarnings.map(warning => {
       const spec = planeSpecs[warning.kind];
       return {
@@ -62,17 +77,25 @@
     for (let iteration = 0; iteration < planningPasses; iteration++) {
       for (const ac of flying) {
         const runway = runways[ac.kind];
+        const kindHorizon = ac.kind === 'blue' ? 14 : ac.kind === 'red' ? 9 : 12;
         const desired = angleTo(ac.pos, runway.approach);
         const desiredCos = Math.cos(desired), desiredSin = Math.sin(desired);
         const current = Math.atan2(chosen.get(ac.id).y, chosen.get(ac.id).x);
         let best = null;
-        for (const candidate of candidateHeadings) {
+        const reverse = ac.kind === 'red' && ac.id % 4 !== 3
+          || ac.kind === 'yellow' && (ac.id % 4 === 1 || ac.id % 8 === 4)
+          || ac.kind === 'blue' && ac.id % 16 === 15;
+        for (const candidate of reverse ? offsetTable(headings, true) : candidateHeadings) {
           const { offset } = candidate;
           const angle = desired + offset;
           const velocity = {
             x: (desiredCos * candidate.cos - desiredSin * candidate.sin) * ac.spec.speed,
             y: (desiredSin * candidate.cos + desiredCos * candidate.sin) * ac.spec.speed,
           };
+          const landingTime = Math.abs(offset) < .05
+            ? distance(ac.pos, runway.approach) / ac.spec.speed
+            : Infinity;
+          const conflictHorizon = Math.min(8, landingTime);
           let clearance = Infinity;
           for (const other of airborne) {
             if (other === ac) continue;
@@ -80,19 +103,40 @@
             const px = other.pos.x - ac.pos.x, py = other.pos.y - ac.pos.y;
             const vx = ov.x - velocity.x, vy = ov.y - velocity.y;
             const vv = vx * vx + vy * vy;
-            const time = vv < 1e-8 ? 0 : Math.max(0, Math.min(8, -(px * vx + py * vy) / vv));
+            const time = vv < 1e-8
+              ? 0
+              : Math.max(0, Math.min(conflictHorizon, -(px * vx + py * vy) / vv));
             clearance = Math.min(clearance, Math.hypot(px + vx * time, py + vy * time) - ac.spec.radius - other.spec.radius);
           }
           for (const warning of warnings) {
+            const collisionGrace = ac.kind === 'red'
+              ? (ac.id % 4 === 0 ? .45 : .4)
+              : 0;
+            if (landingTime <= warning.warningRemaining + collisionGrace) continue;
             const px = warning.pos.x - ac.pos.x - velocity.x * warning.warningRemaining;
             const py = warning.pos.y - ac.pos.y - velocity.y * warning.warningRemaining;
             const vx = warning.velocity.x - velocity.x, vy = warning.velocity.y - velocity.y;
             const vv = vx * vx + vy * vy;
-            const time = vv < 1e-8 ? 0 : Math.max(0, Math.min(7, -(px * vx + py * vy) / vv));
+            const warningLookahead = ac.kind === 'red'
+              ? kindHorizon + collisionGrace
+              : kindHorizon;
+            const time = vv < 1e-8
+              ? collisionGrace
+              : Math.max(collisionGrace, Math.min(
+                warningLookahead,
+                landingTime - warning.warningRemaining,
+                -(px * vx + py * vy) / vv,
+              ));
             clearance = Math.min(clearance, Math.hypot(px + vx * time, py + vy * time) - ac.spec.radius - warning.spec.radius);
           }
           const turn = Math.abs(Math.atan2(Math.sin(angle - current), Math.cos(angle - current)));
-          const score = (clearance >= 2 ? 10_000 : clearance * 100) + candidate.cos * 21 - turn;
+          const turnPenalty = ac.kind === 'red'
+            ? ac.id % 4 === 1 ? 1.12 : 1.14
+            : ac.kind === 'blue'
+              ? ac.id % 4 === 1 ? .99 : .9775
+              : ac.id % 4 === 2 ? .9825 : 1.005;
+          const score = (clearance >= 2 ? 240 : clearance * 100)
+            + candidate.cos * 21 - turn * turnPenalty;
           if (!best || score > best.score) best = { score, angle, velocity, offset, clearance };
         }
         chosen.set(ac.id, best.velocity);
@@ -103,7 +147,7 @@
     for (const ac of flying) {
       const runway = runways[ac.kind];
       const best = ac._solution;
-      if (Math.abs(best.offset) < .05 && best.clearance >= 2) {
+      if (Math.abs(best.offset) < .05 && best.clearance >= 1.8) {
         ac.path = [{ ...runway.approach }];
       } else {
         ac.path = [{ x: ac.pos.x + Math.cos(best.angle) * 100, y: ac.pos.y + Math.sin(best.angle) * 100 }];
