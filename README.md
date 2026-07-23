@@ -13,8 +13,9 @@ open performance panel reports landings, departures, pace, and elapsed time live
 
 The panel is a cumulative, single-seed game score and is not the benchmark below.
 The benchmark uses five seeds and discards each run's first five minutes. The
-three-minute GIF is intentionally full length (39 MB); it is sustained-operation
-evidence, while the shorter animations below explain individual decisions.
+three-minute GIF is sustained-operation evidence; its capture-only palette and
+7 fps presentation keep the complete run visible inline on GitHub. The shorter
+animations below explain individual decisions.
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
@@ -444,8 +445,9 @@ npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
 Hero defaults are seed `101`, `TARGET_HOURS=0.5`, `CAPTURE_SECONDS=180`, and
-`HERO_FPS=10`. At that default frame rate, each GIF frame advances exactly six
-1/60-second simulation ticks; wall-clock browser throttling cannot stretch the
+`HERO_FPS=7`. The simulator and controller still execute every 1/60-second tick;
+the capture distributes those 60 ticks deterministically over seven rendered
+frames each second. Wall-clock browser throttling therefore cannot stretch the
 displayed timeline. All four settings can be overridden through environment
 variables.
 

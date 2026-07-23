@@ -15,7 +15,7 @@ const targetSeconds = Number(process.env.TARGET_HOURS || 0.5) * 60 * 60;
 const captureSeconds = Number(process.env.CAPTURE_SECONDS || 180);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
 const outputName = process.env.HERO_OUTPUT || 'airspace-after-thirty-minutes-panel.gif';
-const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 10));
+const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 7));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -69,6 +69,24 @@ try {
   const captureStart = await page.evaluate(() => {
     const game = window.__game;
     game.update = () => {};
+    game.map.scenery.grassPatches = [];
+    game.map.scenery.dirtFields = [];
+    game.map.scenery.stream = null;
+    game.map.scenery.trees = [];
+    game.map.scenery.buildings = [];
+    const viewport = window.__airportViewport;
+    const sceneryLayer = viewport.scene.getObjectByName('airport-scenery');
+    if (sceneryLayer) sceneryLayer.visible = false;
+    const originalRender = viewport.render.bind(viewport);
+    viewport.render = function renderFocusedAirspace(...args) {
+      this.scene.traverse(object => {
+        if (object.geometry?.type === 'PlaneGeometry'
+            && object.material?.color?.getHexString() === '78b67a') {
+          object.material.color.setHex(0x102126);
+        }
+      });
+      return originalRender(...args);
+    };
     window.__captureAircraft = game.aircraft;
     game.aircraft = game.aircraft.filter(aircraft =>
       aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
@@ -90,9 +108,7 @@ try {
     }, steps);
     await page.waitForTimeout(16);
     await page.screenshot({
-      path: path.join(framesDir, `frame-${String(index).padStart(4, '0')}.jpg`),
-      type: 'jpeg',
-      quality: 88,
+      path: path.join(framesDir, `frame-${String(index).padStart(4, '0')}.png`),
     });
   }
 
@@ -107,8 +123,8 @@ try {
   }
   const ffmpeg = process.env.FFMPEG || 'ffmpeg';
   await execute(ffmpeg, [
-    '-y', '-framerate', String(outputFps), '-i', path.join(framesDir, 'frame-%04d.jpg'),
-    '-vf', 'scale=1200:-1:flags=lanczos,hqdn3d=8:6:24:18,split[s0][s1];[s0]palettegen=max_colors=64:stats_mode=diff[p];[s1][p]paletteuse=dither=none:diff_mode=rectangle',
+    '-y', '-framerate', String(outputFps), '-i', path.join(framesDir, 'frame-%04d.png'),
+    '-vf', 'scale=1200:-1:flags=neighbor,split[s0][s1];[s0]palettegen=max_colors=20:stats_mode=diff[p];[s1][p]paletteuse=dither=none:diff_mode=rectangle',
     '-loop', '0', path.join(outputDir, outputName),
   ]);
   fs.writeFileSync(path.join(outputDir, `${path.basename(outputName, '.gif')}.json`), `${JSON.stringify({ seed: seedValue, capturedFrames, ...finalState }, null, 2)}\n`);
