@@ -104,7 +104,7 @@
       const runway = runways[ac.kind];
       const best = ac._solution;
       if (Math.abs(best.offset) < .05 && best.clearance >= 2) {
-        ac.path = [{ ...runway.approach }, { ...runway.end }];
+        ac.path = [{ ...runway.approach }];
       } else {
         ac.path = [{ x: ac.pos.x + Math.cos(best.angle) * 100, y: ac.pos.y + Math.sin(best.angle) * 100 }];
       }

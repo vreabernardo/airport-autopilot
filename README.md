@@ -24,7 +24,7 @@ throughput improvements from trading away safety.
 
 The simulator exposes one control input per flying aircraft: a path. On every
 simulation tick, the aircraft steers toward the first waypoint. Supplying the
-same-color runway's approach point followed by its runway end commits a landing;
+same-color runway's approach point commits a landing;
 until then, the controller may replace the temporary waypoint on the next tick.
 
 Aircraft have native speeds and collision radii in simulator world units. For
@@ -54,10 +54,10 @@ default-window runs or leaderboard scores that use different bounds.
 | --- | ---: |
 | Fixed evaluation runs | 5 × 20 simulated minutes |
 | Survived | 5 / 5 |
-| Mean steady-state throughput | 54.972 operations/min |
-| Worst-seed throughput | 53.999 operations/min |
-| Mean path inflation | 1.124× |
-| Composite metric | **54.704211** |
+| Mean steady-state throughput | 62.292 operations/min |
+| Worst-seed throughput | 60.732 operations/min |
+| Mean path inflation | 1.222× |
+| Composite metric | **61.857780** |
 
 An operation is one landing or departure. Evaluation discards the first five
 minutes of each run so the reported pace measures the saturated system rather
@@ -71,7 +71,8 @@ contains bundle/controller hashes, definitions, bounds, seeds, and every run.
 | Direct approach only | 0 / 5 | — | 0 | 0 |
 | One planning sweep + shield | 5 / 5 | 54.332 | 54.071 | 10,545 |
 | Two planning sweeps, no shield | 4 / 5 | 54.265 | 0 | 0 |
-| **Two planning sweeps + shield** | **5 / 5** | **54.972** | **54.704** | **9,243** |
+| Two planning sweeps + shield + full runway roll | 5 / 5 | 54.972 | 54.704 | 9,243 |
+| **Two planning sweeps + shield + threshold release** | **5 / 5** | **62.292** | **61.858** | **14,594** |
 
 The discarded orbit/merge architecture predates the fixed evaluator, so no
 comparable score was retained; claims about its complexity are qualitative. The
@@ -236,7 +237,7 @@ Departures are included in the same velocity field at their fixed 10.5-unit
 speed. Arrivals, departures, and not-yet-visible aircraft are evaluated by one
 pairwise model.
 
-## 6. Commit to a runway late
+## 6. Commit late, release at the threshold
 
 A temporary route can change on the next frame. A runway approach cannot: once
 the game accepts it, landing behavior takes over and the aircraft loses freedom
@@ -251,6 +252,18 @@ angular offset < 0.05 rad  AND  predicted clearance >= 2
 Otherwise it publishes a long waypoint in the selected direction and solves
 again one frame later. The apparent smoothness comes from continuous
 replanning, not from long-lived routes.
+
+Once committed, the airborne route ends at the runway approach threshold. At
+that point the unchanged simulator records the landing and transfers the
+aircraft onto its configured ground route. The earlier controller unnecessarily
+kept the runway end as a second airborne waypoint. That fixed runway roll held
+one of the simulator's twelve inbound slots for another 7–9 seconds after the
+landing was already inevitable.
+
+Removing that redundant waypoint is the main throughput gain: the five-seed mean
+rose from 54.972 to 62.292 operations/min, and every measured seed exceeded 60.
+Aircraft speeds, scoring, collision detection, spawn timing, taxi routes, and
+departure scheduling are unchanged.
 
 ## 7. One last check before moving
 
