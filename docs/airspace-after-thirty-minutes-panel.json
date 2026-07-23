@@ -1,14 +1,24 @@
 {
   "seed": 101,
-  "capturedFrames": 1260,
+  "capturedFrames": 288,
+  "focus": {
+    "ids": [
+      1114,
+      1118
+    ],
+    "score": 13.291864650363596,
+    "runwayDistance": 52.0767818070352,
+    "directClearance": -2.640904877775655,
+    "actualClearance": 10.796872406474753
+  },
   "ok": true,
   "phase": "playing",
-  "elapsed": 1980.2666666651944,
-  "landings": 1238,
-  "departures": 677,
-  "airborne": 6,
-  "total": 568,
-  "warnings": 2,
+  "elapsed": 1825.4833333320018,
+  "landings": 1128,
+  "departures": 619,
+  "airborne": 7,
+  "total": 517,
+  "warnings": 3,
   "bounds": {
     "minX": -39.87250908482147,
     "maxX": 39.87250908482153,
@@ -34,8 +44,16 @@
     ]
   },
   "stats": {
-    "frames": 118816,
-    "shieldInterventions": 3814
+    "frames": 109529,
+    "shieldInterventions": 3625
   },
-  "stop": false
+  "stop": false,
+  "heroAudit": {
+    "directFrames": 18,
+    "coordinatedFrames": 21,
+    "missingFocusFrames": 0,
+    "returnedHomeFrames": 211,
+    "fullSceneryVisible": true,
+    "performancePanelVisible": true
+  }
 }
