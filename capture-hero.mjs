@@ -11,11 +11,11 @@ const execute = promisify(execFile);
 const projectDir = process.env.PROJECT_DIR || path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(projectDir, 'docs');
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
-const targetSeconds = Number(process.env.TARGET_HOURS || 2) * 60 * 60;
-const captureSeconds = Number(process.env.CAPTURE_SECONDS || 10);
+const targetSeconds = Number(process.env.TARGET_HOURS || 0.5) * 60 * 60;
+const captureSeconds = Number(process.env.CAPTURE_SECONDS || 180);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'airspace-after-two-hours-fluid.gif';
-const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 15));
+const outputName = process.env.HERO_OUTPUT || 'airspace-after-thirty-minutes-live.gif';
+const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 10));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
