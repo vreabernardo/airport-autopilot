@@ -2,21 +2,21 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![A live conflict resolved by the controller after thirty minutes of autonomous operation](docs/airspace-after-thirty-minutes-panel.gif)
+![The controller resolves the first live two-aircraft conflict](docs/early-conflict-cinematic.gif)
 
-The controller above has already operated the real simulator for thirty
-accelerated minutes. The next 24 seconds run at true 1× speed—not a timelapse.
-The camera starts on the complete live airspace, follows a real pair whose direct
-runway headings conflict, shows the coordinated velocities selected by the
-controller, and returns to the full field as normal traffic continues. The game's
-full scenery and open performance panel remain visible. Rendering hides only
-inactive accumulated ground aircraft; every controller decision still runs
-against the complete simulation state at 60 Hz.
+The controller above has reached the first qualifying live conflict, 1 minute
+40 seconds after launch, with two aircraft airborne. The next 24 seconds run at
+true 1× speed—not a timelapse. The camera follows the blue and yellow pair whose
+direct runway headings overlap by 4.42 world units, shows the coordinated
+velocities that preserve 6.93 units of clearance, and returns to the full field
+as normal traffic continues. The game's full scenery and open performance panel
+remain visible. Every controller decision runs against the complete simulation
+state at 60 Hz.
 
 The panel is a cumulative, single-seed game score and is not the benchmark below.
 The benchmark uses five seeds and discards each run's first five minutes. The
-hero is a cinematic inspection of one live intervention after sustained
-operation; the shorter animations below isolate individual controller stages.
+hero is a cinematic inspection of the first readable live intervention; the
+shorter animations below isolate individual controller stages.
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
@@ -385,7 +385,7 @@ as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 ```text
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
-capture-hero.mjs         30-minute warm-up + 24-second fixed-step cinematic
+capture-hero.mjs         first live conflict + 24-second fixed-step cinematic
 capture-explainers.mjs   five controller-recorded technical animations
 evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
 evaluation/fixed/        pinned production model/map modules
@@ -444,11 +444,11 @@ npm start
 The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
-npm run capture:hero       # fast-forward 30 min, record a 24 s live intervention
+npm run capture:hero       # find the first live conflict, record the next 24 s
 npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
-Hero defaults are seed `101`, `TARGET_HOURS=0.5`, `CAPTURE_SECONDS=24`, and
+Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=24`, and
 `HERO_FPS=12`. The simulator and controller still execute every 1/60-second tick;
 each rendered frame advances exactly five simulation ticks. Wall-clock browser
 throttling therefore cannot stretch the displayed timeline. All four settings

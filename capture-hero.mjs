@@ -11,10 +11,10 @@ const execute = promisify(execFile);
 const projectDir = process.env.PROJECT_DIR || path.dirname(fileURLToPath(import.meta.url));
 const outputDir = process.env.HERO_OUTPUT_DIR || path.join(projectDir, 'docs');
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
-const targetSeconds = Number(process.env.TARGET_HOURS || 0.5) * 60 * 60;
+const targetSeconds = Number(process.env.TARGET_HOURS ?? 0) * 60 * 60;
 const captureSeconds = Number(process.env.CAPTURE_SECONDS || 24);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'airspace-after-thirty-minutes-panel.gif';
+const outputName = process.env.HERO_OUTPUT || 'early-conflict-cinematic.gif';
 const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 12));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
@@ -121,6 +121,8 @@ try {
             best = {
               ids: [a.id, b.id],
               score,
+              elapsed: game.elapsed,
+              airborneCount: flying.length,
               runwayDistance,
               directClearance: direct.clearance,
               actualClearance: actual.clearance,
@@ -131,18 +133,12 @@ try {
       return best;
     };
     let focus = selectFocus();
-    for (let tick = 0; tick < 60 * 90 && !focus; tick++) {
+    for (let tick = 0; tick < 60 * 6 * 60 && !focus; tick++) {
       game.step(1 / 60);
       focus = selectFocus();
     }
     if (!focus) {
-      const flying = game.aircraft.filter(aircraft => aircraft.state === 'flying');
-      if (flying.length < 2) throw new Error('Could not find two airborne aircraft for the hero.');
-      focus = {
-        ids: [flying[0].id, flying[1].id],
-        directClearance: null,
-        actualClearance: null,
-      };
+      throw new Error('Could not find an early direct-conflict pair resolved by the controller.');
     }
 
     game.update = () => {};
@@ -265,7 +261,7 @@ try {
       context.lineWidth = 2;
       context.strokeRect(760, 18, 414, 82);
       label('AUTONOMOUS AIRSPACE · 60 HZ', 780, 47, '#f5edcf', 'left', 15);
-      let phase = '30 MINUTES IN · LIVE TRAFFIC';
+      let phase = 'FIRST LIVE CONFLICT · FOCUS PAIR';
       if (time >= .8 && time < 1.4) phase = 'LOCKING A LIVE CONFLICT';
       else if (time >= 1.4 && time < 2.9) phase = 'DIRECT ROUTES INTERSECT';
       else if (time >= 2.9 && time < 4.6) phase = 'COORDINATED VELOCITIES';
@@ -353,13 +349,15 @@ try {
   if (finalState.phase !== 'playing') throw new Error(`Game over at ${finalState.elapsed.toFixed(1)} seconds.`);
   if (!finalState.heroAudit.fullSceneryVisible) throw new Error('Hero audit failed: full game scenery is hidden.');
   if (!finalState.heroAudit.performancePanelVisible) throw new Error('Hero audit failed: performance panel is hidden.');
-  if (finalState.heroAudit.missingFocusFrames > 0
-      || finalState.heroAudit.directFrames < outputFps
-      || finalState.heroAudit.coordinatedFrames < outputFps) {
-    throw new Error(`Hero audit failed: conflict continuity ${JSON.stringify(finalState.heroAudit)}.`);
-  }
-  if (finalState.heroAudit.returnedHomeFrames < outputFps) {
-    throw new Error('Hero audit failed: camera did not return to the full airspace.');
+  if (captureSeconds >= 6.5) {
+    if (finalState.heroAudit.missingFocusFrames > 0
+        || finalState.heroAudit.directFrames < outputFps
+        || finalState.heroAudit.coordinatedFrames < outputFps) {
+      throw new Error(`Hero audit failed: conflict continuity ${JSON.stringify(finalState.heroAudit)}.`);
+    }
+    if (finalState.heroAudit.returnedHomeFrames < outputFps) {
+      throw new Error('Hero audit failed: camera did not return to the full airspace.');
+    }
   }
   const simulatedCaptureSeconds = finalState.elapsed - captureSetup.start;
   if (Math.abs(simulatedCaptureSeconds - captureSeconds) > 1 / 30) {

@@ -1,0 +1,61 @@
+{
+  "seed": 101,
+  "capturedFrames": 288,
+  "focus": {
+    "ids": [
+      22,
+      23
+    ],
+    "score": 12.540443598569242,
+    "elapsed": 100.41666666666225,
+    "airborneCount": 2,
+    "runwayDistance": 95.4892857725467,
+    "directClearance": -4.418565300686037,
+    "actualClearance": 6.928262225726371
+  },
+  "ok": true,
+  "phase": "playing",
+  "elapsed": 124.41666666666089,
+  "landings": 27,
+  "departures": 6,
+  "airborne": 2,
+  "total": 24,
+  "warnings": 1,
+  "bounds": {
+    "minX": -39.87250908482147,
+    "maxX": 39.87250908482153,
+    "minY": -41.776872340890876,
+    "maxY": 41.77687234089083,
+    "corners": [
+      {
+        "x": -39.87250908482147,
+        "y": 14.340904712088388
+      },
+      {
+        "x": -7.083181918691736,
+        "y": 41.77687234089083
+      },
+      {
+        "x": 39.87250908482153,
+        "y": -14.340904712088431
+      },
+      {
+        "x": 7.083181918691778,
+        "y": -41.776872340890876
+      }
+    ]
+  },
+  "stats": {
+    "frames": 7465,
+    "shieldInterventions": 0
+  },
+  "stop": false,
+  "heroAudit": {
+    "directFrames": 18,
+    "coordinatedFrames": 21,
+    "missingFocusFrames": 0,
+    "returnedHomeFrames": 211,
+    "fullSceneryVisible": true,
+    "performancePanelVisible": true
+  }
+}
