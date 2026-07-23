@@ -10,6 +10,7 @@
     "start:background": "./start-runner.sh",
     "stop": "./stop-runner.sh",
     "status": "./status-runner.sh",
+    "evaluate": "node evaluation/evaluate.mjs",
     "capture:hero": "node capture-hero.mjs",
     "capture:explainers": "node capture-explainers.mjs"
   },

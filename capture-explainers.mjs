@@ -13,7 +13,7 @@ const outputDir = path.join(projectDir, 'docs');
 const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-explainers-'));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 const fps = 15;
-const frameCount = 90;
+const frameCount = 120;
 
 const instrumentedSolver = solverSource
   .replace(
@@ -21,8 +21,8 @@ const instrumentedSolver = solverSource
     'for (const ac of flying) {\n      if (window.__captureExplain) { ac._capturePasses = []; ac._captureCandidates = []; ac._captureFields = []; }\n      ac.target ||= runways[ac.kind];',
   )
   .replace(
-    'let best = null;\n        for (const candidate of headings) {',
-    'let best = null;\n        const captureCandidates = [];\n        const captureField = Object.fromEntries([...chosen].map(([id, velocity]) => [id, { ...velocity }]));\n        for (const candidate of headings) {',
+    'let best = null;\n        for (const candidate of candidateHeadings) {',
+    'let best = null;\n        const captureCandidates = [];\n        const captureField = Object.fromEntries([...chosen].map(([id, velocity]) => [id, { ...velocity }]));\n        for (const candidate of candidateHeadings) {',
   )
   .replace(
     'if (!best || score > best.score) best = { score, angle, velocity, offset, clearance };',
@@ -33,8 +33,8 @@ const instrumentedSolver = solverSource
     'chosen.set(ac.id, best.velocity);\n        ac._solution = best;\n        if (window.__captureExplain) { ac._capturePasses[iteration] = { ...best, velocity: { ...best.velocity } }; ac._captureCandidates[iteration] = captureCandidates; ac._captureFields[iteration] = captureField; }',
   )
   .replace(
-    'const dt = 1 / 60;\n    for (let pass = 0; pass < 4; pass++) {',
-    'const dt = 1 / 60;\n    const captureShieldBefore = Object.fromEntries([...chosen].map(([id, velocity]) => [id, { ...velocity }]));\n    for (let pass = 0; pass < 4; pass++) {',
+    'const dt = 1 / 60;\n    for (let pass = 0; pass < shieldPasses; pass++) {',
+    'const dt = 1 / 60;\n    const captureShieldBefore = Object.fromEntries([...chosen].map(([id, velocity]) => [id, { ...velocity }]));\n    for (let pass = 0; pass < shieldPasses; pass++) {',
   )
   .replace(
     'chosen.set(ac.id, safest.velocity);\n        ac.path =',
@@ -130,6 +130,10 @@ try {
     const originalRender = viewport.render.bind(viewport);
     viewport.render = function renderDiagram(...args) {
       const simplify = object => {
+        if (object.type === 'Sprite') {
+          object.visible = false;
+          if (object.material) object.material.opacity = 0;
+        }
         if (object.name === 'aircraft-airborne-halo') {
           object.visible = false;
           object.material.opacity = 0;
@@ -150,6 +154,15 @@ try {
     document.querySelectorAll('body *').forEach(element => {
       if (!ancestors.has(element)) element.style.visibility = 'hidden';
     });
+    const hideGameChrome = () => {
+      document.querySelectorAll('.landing-assist, body *').forEach(element => {
+        const transientResult = /^(landing|departure)$/i.test(element.textContent?.trim() || '');
+        if (!ancestors.has(element) && transientResult) element.style.visibility = 'hidden';
+        if (element.classList?.contains('landing-assist')) element.style.visibility = 'hidden';
+      });
+    };
+    hideGameChrome();
+    new MutationObserver(hideGameChrome).observe(document.body, { childList: true, subtree: true });
 
     const overlay = document.createElement('canvas');
     overlay.width = innerWidth;
@@ -355,18 +368,20 @@ try {
     };
     const targetMarker = plane => {
       const target = plane.solverTarget;
-      const midpoint = {
-        x: (target.approach.x + target.end.x) / 2,
-        y: (target.approach.y + target.end.y) / 2,
-      };
-      const point = screen(midpoint);
-      label(`${plane.kind.toUpperCase()} RUNWAY`, point.x, point.y - 18, colorFor(plane.kind), 'center', 13);
+      const approach = screen(target.approach);
+      const runwayEnd = screen(target.end);
+      line(approach, runwayEnd, colorFor(plane.kind), 2, [6, 5]);
+      box(approach, 8, colorFor(plane.kind), 3);
+      label(`${plane.kind.toUpperCase()} APPROACH`, approach.x, approach.y - 18, colorFor(plane.kind), 'center', 13);
     };
     const endpoint = (plane, velocity, seconds = 2.6) => screen({
       x: plane.pos.x + velocity.x * seconds,
       y: plane.pos.y + velocity.y * seconds,
     });
     const usePlanes = sourcePlanes => {
+      sim.events.length = 0;
+      sim.spawnWarnings.length = 0;
+      sim.drawing = null;
       const planes = sourcePlanes.map(source => ({
         ...samples[source.kind], ...source, spec: samples[source.kind].spec,
         pos: { ...source.pos }, path: [], target: null, solverTarget: source.target, state: 'flying', age: 30,
@@ -425,6 +440,38 @@ try {
       box({ x: markerX, y }, 8, color, 4);
       label(value.toFixed(3), markerX, y + 34, color, 'center', 15);
     };
+    const disc = (point, radius, color, width = 3) => {
+      context.beginPath();
+      context.arc(Math.round(point.x), Math.round(point.y), Math.max(2, radius), 0, Math.PI * 2);
+      context.strokeStyle = color;
+      context.lineWidth = width;
+      context.stroke();
+      box(point, 3, color, 2);
+    };
+    const physicalDisc = (plane, position, color) => {
+      const center = screen(position);
+      const edge = screen({ x: position.x + plane.spec.radius, y: position.y });
+      disc(center, Math.hypot(edge.x - center.x, edge.y - center.y), color, 3);
+    };
+    const shieldInset = (a, b, clearance, safe) => {
+      const x = 770, y = 420, width = 400, height = 220;
+      context.fillStyle = palette.panel;
+      context.fillRect(x, y, width, height);
+      context.strokeStyle = palette.edge;
+      context.lineWidth = 3;
+      context.strokeRect(x, y, width, height);
+      label('NEXT-TICK PHYSICAL RADII', x + 20, y + 32, palette.ink, 'left', 16);
+      label('SPRITE ART IS NOT THE COLLISION BOUNDARY', x + 20, y + 56, palette.dim, 'left', 12);
+      const scale = 26;
+      const first = { x: x + 32 + a.spec.radius * scale, y: y + 128 };
+      const second = { x: first.x + (a.spec.radius + b.spec.radius + clearance) * scale, y: y + 128 };
+      disc(first, a.spec.radius * scale, colorFor(a.kind), 4);
+      disc(second, b.spec.radius * scale, colorFor(b.kind), 4);
+      const leftEdge = { x: first.x + a.spec.radius * scale, y: first.y };
+      const rightEdge = { x: second.x - b.spec.radius * scale, y: second.y };
+      bracket(leftEdge, rightEdge, safe ? palette.safe : palette.danger);
+      label(`EDGE GAP ${clearance.toFixed(3)}`, x + width / 2, y + 202, safe ? palette.safe : palette.danger, 'center', 15);
+    };
 
     window.__renderScenario = (name, time) => {
       context.clearRect(0, 0, innerWidth, innerHeight);
@@ -433,6 +480,10 @@ try {
         const scenario = window.__scenarios.decision;
         const planes = usePlanes(scenario.planes);
         frameScene(planes, ['blue', 'red'], 1.55);
+        context.fillStyle = '#102126';
+        context.fillRect(490, 170, 80, 45);
+        context.fillRect(525, 440, 78, 45);
+        context.fillRect(765, 144, 48, 25);
         const focus = planes.find(plane => plane.id === scenario.focusId);
         const threat = planes.find(plane => plane.id !== scenario.focusId);
         const focusSource = scenario.planes.find(plane => plane.id === scenario.focusId);
@@ -446,8 +497,8 @@ try {
         if (time < 1.5) progress = time / 1.5;
         else if (time < 2.1) progress = 1;
         else if (time < 2.7) progress = 1 - (time - 2.1) / .6;
-        else if (time < 3.5) mode = 'search';
-        else { mode = 'safe'; progress = clamp01((time - 3.5) / 1.6); }
+        else if (time < 4.7) mode = 'search';
+        else { mode = 'safe'; progress = clamp01((time - 4.7) / 1.7); }
         const focusVelocity = mode === 'safe' ? selected.velocity : direct.velocity;
         if (mode !== 'search') {
           move(focus, focusSource, focusVelocity, scenario.replay.time * progress);
@@ -457,6 +508,7 @@ try {
           move(threat, threatSource, threatVelocity, 0);
         }
         planes.forEach(drawPlaneIdentity);
+        planes.forEach(plane => physicalDisc(plane, plane.pos, palette.edge));
         const focusStart = screen(focusSource.pos), threatStart = screen(threatSource.pos);
         const focusNow = screen(focus.pos), threatNow = screen(threat.pos);
         if (mode === 'direct') {
@@ -473,11 +525,20 @@ try {
             panel('1 · TEST THE DIRECT ROUTE', 'DIRECT CANDIDATE', 'AMBER DASH = PROPOSED · CREAM SOLID = CURRENT FIELD');
           }
         } else if (mode === 'search') {
-          const index = Math.min(candidates.length - 1, Math.floor((time - 2.7) / .8 * candidates.length));
+          const index = Math.min(candidates.length - 1, Math.floor((time - 2.7) / 2 * candidates.length));
           const candidate = candidates[index];
-          line(focusStart, endpoint(focus, candidate.velocity, 3.1), palette.proposed, 5, [10, 7]);
-          label(`CANDIDATE ${String(index + 1).padStart(2, '0')} / 48`, focusStart.x, focusStart.y - 52, palette.proposed, 'center', 17);
-          panel('1 · TEST THE DIRECT ROUTE', 'SEARCH 48 HEADINGS', 'EACH HEADING IS SCORED AGAINST THE EXACT SAME VELOCITY FIELD');
+          const selectedIndex = candidates.findIndex(item => Math.abs(item.offset - selected.offset) < 1e-9);
+          for (let candidateIndex = 0; candidateIndex <= index; candidateIndex++) {
+            const item = candidates[candidateIndex];
+            const color = candidateIndex === selectedIndex
+              ? palette.safe
+              : (item.clearance >= 2 ? palette.edge : palette.danger);
+            line(focusStart, endpoint(focus, item.velocity, 1.05), color, candidateIndex === index ? 4 : 2);
+          }
+          line(focusStart, endpoint(focus, candidate.velocity, 2.7), palette.proposed, 5, [10, 7]);
+          const status = index === selectedIndex ? 'SELECTED' : (candidate.clearance >= 2 ? 'SAFE · LOWER SCORE' : 'REJECT · UNSAFE');
+          label(`CANDIDATE ${String(index + 1).padStart(2, '0')} / 48 · ${status}`, focusStart.x, focusStart.y - 52, index === selectedIndex ? palette.safe : palette.proposed, 'center', 17);
+          panel('1 · TEST THE DIRECT ROUTE', 'SEARCH 48 HEADINGS', 'RED = UNSAFE · GRAY = SAFE BUT LOWER SCORE · CYAN = SELECTED');
         } else {
           line(focusStart, focusNow, palette.safe, 7);
           line(threatStart, threatNow, palette.ink, 3);
@@ -488,31 +549,37 @@ try {
       if (name === 'coordination-passes') {
         const scenario = window.__scenarios.coordination;
         const planes = usePlanes(scenario.planes);
-        frameScene(planes, ['yellow', 'blue', 'red'], 1.38);
+        frameScene(planes, ['yellow', 'blue', 'red'], 1.05);
         let mode = 'direct';
         let progress = 0;
         if (time < 1.5) progress = time / 1.5;
         else if (time < 2.1) progress = 1;
         else if (time < 2.7) progress = 1 - (time - 2.1) / .6;
-        else if (time < 3.5) mode = 'sweep0';
-        else if (time < 4.3) mode = 'sweep1';
-        else { mode = 'safe'; progress = clamp01((time - 4.3) / 1.2); }
+        else if (time < 4.2) mode = 'sweep0';
+        else if (time < 4.8) mode = 'hold0';
+        else if (time < 6.3) mode = 'sweep1';
+        else { mode = 'safe'; progress = clamp01((time - 6.3) / 1.3); }
         planes.forEach((plane, index) => {
           const source = scenario.planes.find(item => item.id === plane.id);
           const velocity = mode === 'direct' ? source.direct : source.passes[1].velocity;
           const replayTime = mode === 'direct' ? scenario.direct.time : scenario.sweep1.time;
-          move(plane, source, velocity, mode === 'sweep0' || mode === 'sweep1' ? 0 : replayTime * progress);
+          move(plane, source, velocity, mode === 'sweep0' || mode === 'hold0' || mode === 'sweep1' ? 0 : replayTime * progress);
           label(String.fromCharCode(65 + index), screen(plane.pos).x, screen(plane.pos).y - 42, palette.ink, 'center', 19);
-          if (mode === 'sweep0' || mode === 'sweep1') {
+          if (mode === 'hold0') {
+            const origin = screen(plane.pos);
+            line(origin, endpoint(plane, source.direct), palette.proposed, 3, [10, 7]);
+            line(origin, endpoint(plane, source.passes[0].velocity), palette.ink, 6);
+          } else if (mode === 'sweep0' || mode === 'sweep1') {
             const origin = screen(plane.pos);
             const previous = mode === 'sweep0' ? source.direct : source.passes[0].velocity;
             const accepted = mode === 'sweep0' ? source.passes[0].velocity : source.passes[1].velocity;
-            const start = mode === 'sweep0' ? 2.7 : 3.5;
+            const start = mode === 'sweep0' ? 2.7 : 4.8;
             line(origin, endpoint(plane, previous), palette.proposed, 4, [10, 7]);
-            const active = Math.min(2, Math.floor((time - start) / .8 * planes.length));
+            const active = Math.min(2, Math.floor((time - start) / 1.5 * planes.length));
             if (index <= active) line(origin, endpoint(plane, accepted), index === active ? palette.safe : palette.ink, 6);
           }
         });
+        planes.forEach(plane => physicalDisc(plane, plane.pos, palette.edge));
         if (mode === 'direct') {
           const a = planes.find(plane => plane.id === scenario.direct.aId);
           const b = planes.find(plane => plane.id === scenario.direct.bId);
@@ -526,9 +593,11 @@ try {
             panel('2 · COORDINATE THE WHOLE FIELD', 'REPLAY INDEPENDENT ROUTES', 'A / B / C IDENTIFY AIRCRAFT · ALL THREE VECTORS MOVE TOGETHER');
           }
         } else if (mode === 'sweep0') {
-          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 1 BUILDS A SAFE JOINT FIELD', `ACCEPT EACH UPDATE IMMEDIATELY · FINAL GAP ${scenario.sweep0.clearance.toFixed(2)}`);
+          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 1 · A → B → C', `ACCEPT EACH UPDATE IMMEDIATELY · FINAL GAP ${scenario.sweep0.clearance.toFixed(2)}`);
+        } else if (mode === 'hold0') {
+          panel('2 · COORDINATE THE WHOLE FIELD', 'HOLD · COMPLETED FIRST-SWEEP FIELD', `ALL A / B / C UPDATES ARE NOW VISIBLE · GAP ${scenario.sweep0.clearance.toFixed(2)}`);
         } else if (mode === 'sweep1') {
-          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 2 REVISITS EARLY DECISIONS', 'EARLY AIRCRAFT NOW SEE THE COMPLETED FIRST-SWEEP FIELD');
+          panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 2 · A → B → C', 'EARLY AIRCRAFT NOW SEE THE COMPLETED FIRST-SWEEP FIELD');
         } else {
           panel('2 · COORDINATE THE WHOLE FIELD', 'SWEEP 2 IS JOINTLY SAFE', `RECOMPUTED MINIMUM GAP ${scenario.sweep1.clearance.toFixed(2)} ≥ 2.00`);
         }
@@ -537,14 +606,14 @@ try {
       if (name === 'safety-shield') {
         const scenario = window.__scenarios.shield;
         const planes = usePlanes(scenario.planes);
-        frameScene(planes, [], 3.2);
+        frameScene(planes, [...new Set(planes.map(plane => plane.kind))], .9);
         const event = scenario.event;
         const controlled = planes.find(plane => plane.id === event.aircraftId);
         const threat = planes.find(plane => plane.id === event.threatId);
         const controlledSource = scenario.planes.find(plane => plane.id === event.aircraftId);
         const threatSource = scenario.planes.find(plane => plane.id === event.threatId);
-        const repaired = time >= 2.8;
-        const afterTick = time >= 4.2;
+        const repaired = time >= 2.7;
+        const afterTick = time >= 5;
         const controlledVelocity = repaired ? event.after : event.before;
         if (afterTick) {
           move(controlled, controlledSource, event.after, 1 / 60);
@@ -560,19 +629,29 @@ try {
         const beforeA = screen({ x: controlledSource.pos.x + event.before.x / 60, y: controlledSource.pos.y + event.before.y / 60 });
         const afterA = screen({ x: controlledSource.pos.x + event.after.x / 60, y: controlledSource.pos.y + event.after.y / 60 });
         const nextB = screen({ x: threatSource.pos.x + event.threatVelocity.x / 60, y: threatSource.pos.y + event.threatVelocity.y / 60 });
+        const beforePosition = { x: controlledSource.pos.x + event.before.x / 60, y: controlledSource.pos.y + event.before.y / 60 };
+        const afterPosition = { x: controlledSource.pos.x + event.after.x / 60, y: controlledSource.pos.y + event.after.y / 60 };
+        const threatPosition = { x: threatSource.pos.x + event.threatVelocity.x / 60, y: threatSource.pos.y + event.threatVelocity.y / 60 };
         if (!repaired) {
           line(screen(controlledSource.pos), endpoint(controlled, event.before, 1.4), palette.proposed, 6, [10, 7]);
           line(screen(threatSource.pos), endpoint(threat, event.threatVelocity, 1.4), palette.ink, 4);
+          physicalDisc(controlledSource, beforePosition, colorFor(controlledSource.kind));
+          physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(beforeA, nextB, palette.danger);
           cross({ x: (beforeA.x + nextB.x) / 2, y: (beforeA.y + nextB.y) / 2 });
           panel('3 · CHECK THE NEXT SIMULATOR TICK', 'BUFFER VIOLATION DETECTED', `NEXT-TICK GAP ${event.clearanceBefore.toFixed(3)} < 0.250`);
           gapMeter(event.clearanceBefore, palette.danger);
+          shieldInset(controlledSource, threatSource, event.clearanceBefore, false);
         } else {
           line(screen(controlledSource.pos), endpoint(controlled, event.before, 1.4), palette.proposed, 3, [10, 7]);
           line(screen(controlledSource.pos), endpoint(controlled, event.after, 1.4), palette.safe, 8);
+          box(beforeA, 5, palette.proposed, 2);
+          physicalDisc(controlledSource, afterPosition, colorFor(controlledSource.kind));
+          physicalDisc(threatSource, threatPosition, colorFor(threatSource.kind));
           bracket(afterA, nextB, palette.safe);
-          panel('3 · CHECK THE NEXT SIMULATOR TICK', afterTick ? 'SAFE FIELD CONSUMED' : 'SHIELD REPLACES ONE VELOCITY', `FINAL GAP ${event.clearanceAfter.toFixed(3)} > 0.250 · ${event.interventions} INTERNAL REPAIR${event.interventions === 1 ? '' : 'S'}`);
+          panel('3 · CHECK THE NEXT SIMULATOR TICK', afterTick ? 'SAFE FIELD CONSUMED' : 'FOUR PASSES · ONE REPLACEMENT IN THIS CASE', `FINAL GAP ${event.clearanceAfter.toFixed(3)} > 0.250 · PASSES ARE SEQUENTIAL`);
           gapMeter(event.clearanceAfter, palette.safe);
+          shieldInset(controlledSource, threatSource, event.clearanceAfter, true);
         }
       }
     };

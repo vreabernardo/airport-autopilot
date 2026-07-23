@@ -34,6 +34,10 @@
   function control(sim) {
     if (window.__apStop || !sim.map || sim.phase !== 'playing') return;
     window.__apStats.frames++;
+    const options = window.__apOptions || {};
+    const planningPasses = options.directOnly ? 1 : (options.planningPasses ?? 2);
+    const candidateHeadings = options.directOnly ? [headings[0]] : headings;
+    const shieldPasses = options.shieldPasses ?? 4;
     const runways = Object.fromEntries(sim.map.runways.map(runway => [runway.color, runway]));
     const airborne = sim.aircraft.filter(ac => ac.state === 'flying' || ac.state === 'departing');
     const flying = airborne.filter(ac => ac.state === 'flying').sort((a, b) => a.id - b.id);
@@ -55,14 +59,14 @@
       ac.target ||= runways[ac.kind];
     }
 
-    for (let iteration = 0; iteration < 2; iteration++) {
+    for (let iteration = 0; iteration < planningPasses; iteration++) {
       for (const ac of flying) {
         const runway = runways[ac.kind];
         const desired = angleTo(ac.pos, runway.approach);
         const desiredCos = Math.cos(desired), desiredSin = Math.sin(desired);
         const current = Math.atan2(chosen.get(ac.id).y, chosen.get(ac.id).x);
         let best = null;
-        for (const candidate of headings) {
+        for (const candidate of candidateHeadings) {
           const { offset } = candidate;
           const angle = desired + offset;
           const velocity = {
@@ -107,7 +111,7 @@
     }
 
     const dt = 1 / 60;
-    for (let pass = 0; pass < 4; pass++) {
+    for (let pass = 0; pass < shieldPasses; pass++) {
       for (const ac of flying) {
         const velocity = chosen.get(ac.id);
         let nextClearance = Infinity;

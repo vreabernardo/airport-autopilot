@@ -10,12 +10,43 @@ at true 1× speed—not a timelapse. The capture renders only active aircraft so
 accumulated ground traffic cannot throttle the README animation; every controller
 decision still runs against the complete simulation state at 60 Hz. The game's
 open performance panel reports landings, departures, pace, and elapsed time live.
-Every aircraft is controlled at 60 Hz; the native scoreboard is hidden so the
-traffic remains readable.
+
+The panel is a cumulative, single-seed game score and is not the benchmark below.
+The benchmark uses five seeds and discards each run's first five minutes. The
+three-minute GIF is intentionally full length (39 MB); it is sustained-operation
+evidence, while the shorter animations below explain individual decisions.
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
 throughput improvements from trading away safety.
+
+## Problem and experimental boundary
+
+The simulator exposes one control input per flying aircraft: a path. On every
+simulation tick, the aircraft steers toward the first waypoint. Supplying the
+same-color runway's approach point followed by its runway end commits a landing;
+until then, the controller may replace the temporary waypoint on the next tick.
+
+Aircraft have native speeds and collision radii in simulator world units. For
+collision-eligible airborne aircraft, pairwise edge clearance at or below zero
+means the physical circles touch or overlap and the run ends. Spawn warnings
+announce an aircraft's future entry position, heading, type, and remaining
+warning time. Departures enter the shared velocity field at a fixed 10.5-unit
+speed.
+
+The reported experiment does **not** use the model class's default 100 × 100
+square bounds. It uses this fixed quadrilateral for the controller, every
+ablation, and every reported seed:
+
+```text
+(-39.873, 14.341) → (-7.083, 41.777) →
+(39.873, -14.341) → (7.083, -41.777)
+```
+
+Its area is 3,128.34 square world units versus 10,000 for the model's default
+square. Bounds affect spawn positions, route length, and traffic pressure, so
+these numbers are internally comparable but should not be compared directly with
+default-window runs or leaderboard scores that use different bounds.
 
 ## Results
 
@@ -27,11 +58,25 @@ throughput improvements from trading away safety.
 | Worst-seed throughput | 53.999 operations/min |
 | Mean path inflation | 1.124× |
 | Composite metric | **54.704211** |
-| Longest separate validation | >5 uninterrupted simulated hours |
 
 An operation is one landing or departure. Evaluation discards the first five
 minutes of each run so the reported pace measures the saturated system rather
-than the empty opening state.
+than the empty opening state. The committed [machine-readable result](evaluation/results/latest.json)
+contains bundle/controller hashes, definitions, bounds, seeds, and every run.
+
+### Ablations under identical seeds and bounds
+
+| Controller | Survived | Mean ops/min | Composite | Shield replacements |
+| --- | ---: | ---: | ---: | ---: |
+| Direct approach only | 0 / 5 | — | 0 | 0 |
+| One planning sweep + shield | 5 / 5 | 54.332 | 54.071 | 10,545 |
+| Two planning sweeps, no shield | 4 / 5 | 54.265 | 0 | 0 |
+| **Two planning sweeps + shield** | **5 / 5** | **54.972** | **54.704** | **9,243** |
+
+The discarded orbit/merge architecture predates the fixed evaluator, so no
+comparable score was retained; claims about its complexity are qualitative. The
+reproducible ablations above isolate the mechanics that remain in the final
+controller.
 
 ## 1. Getting below the interface
 
@@ -51,13 +96,14 @@ game.step = function stepWithController(dt) {
 ```
 
 This preserves the original map, aircraft specifications, spawn process,
-landing rules, departure queues, renderer, and assets. It changes only how paths
-are selected.
+landing rules, departure queues, renderer, and assets. Runtime changes are
+limited to path selection **and the explicitly fixed bounds above**. Hero capture
+also applies rendering-only filters described at the end of this document.
 
-The visible browser is 1200 × 675 pixels. Simulation bounds remain locked to
-the tighter quadrilateral derived from the best 138 × 138 experiment. Rendering
-and traffic density are therefore independent: the game stays legible without
-quietly making the control problem easier.
+The visible browser is 1200 × 675 pixels. Simulation bounds remain locked to the
+quadrilateral above regardless of viewport size. This prevents a README capture
+from changing the evaluated problem, but the chosen bounds are still an
+experimental parameter—not a neutral rendering detail.
 
 ## 2. The first controller was too architectural
 
@@ -83,10 +129,10 @@ question.
 
 ## 3. Search velocities, not paths
 
-For aircraft `i`, the direct bearing to its runway is the preferred velocity.
-The controller samples 48 headings around that bearing. Candidate zero is
-straight ahead; the rest alternate left and right with increasing angular
-offset.
+For aircraft `i`, the direct bearing to its same-color runway **approach point**
+is the preferred velocity. The controller samples 48 headings around that
+bearing. Candidate zero is straight ahead; the rest alternate left and right
+with increasing angular offset.
 
 For every candidate velocity `vᵢ` and every other aircraft `j`, define relative
 position and velocity:
@@ -120,14 +166,16 @@ the production controller, rejects the unsafe direct candidate, and renders
 the measured closest approach and the selected safe velocity. The choice is
 recomputed on the next frame.
 
-Candidates are ranked lexicographically in practice:
+Candidate ranking has two layers:
 
 ```text
-safe clearance first  →  progress toward runway  →  smallest turn
+clearance ≥ 2 enters the safe tier
+within a tier: weighted progress toward approach minus turn magnitude
 ```
 
-The implementation encodes that priority as a large safety tier, then adds a
-forward-progress term and subtracts turn magnitude:
+This is not a fully lexicographic ordering: progress and turn can trade off
+inside the safe tier. Unsafe candidates are graded continuously by clearance.
+The implementation is:
 
 ```js
 score = (clearance >= 2 ? 10_000 : clearance * 100)
@@ -141,8 +189,9 @@ Selecting a safe velocity once per plane is insufficient. A later plane can
 choose a velocity that invalidates an earlier plane's calculation.
 
 The controller treats the current velocity field as a joint solution and runs
-two sequential best-response sweeps. A five-seed ablation found that additional
-sweeps added path churn without improving safety or throughput:
+two sequential best-response sweeps. Under the fixed five-seed evaluator, two
+sweeps raised mean throughput from 54.332 to 54.972 operations/min relative to
+one sweep and reduced shield replacements from 10,545 to 9,243:
 
 ```text
 initialize from current paths
@@ -198,13 +247,23 @@ replanning, not from long-lived routes.
 
 ## 7. Recheck the frame the simulator will actually sample
 
-The horizon planner is sequential and uses floating-point predictions. Rarely,
-the completed field can still contain a conflict at the exact next 1/60-second
-sample.
+The horizon planner is sequential and optimizes an eight-second closest-approach
+criterion, not the exact state transition the simulator will consume next. The
+completed field therefore needs a separate one-tick invariant check.
 
-The final shield projects every pair one frame forward. When clearance falls
-below `0.25`, it searches 64 evenly spaced headings and replaces only the
-threatened aircraft's velocity with the safest immediate alternative.
+The shield projects every pair one frame forward. At clearance `≤ 0.25`, it
+searches 64 evenly spaced headings and replaces the threatened aircraft's
+velocity with the safest immediate alternative. It runs four sequential passes,
+so a frame may repair more than one aircraft and later repairs see earlier ones:
+
+```text
+repeat 4 times:
+    for each flying aircraft in stable ID order:
+        measure minimum edge clearance at t + 1/60 s
+        if clearance <= 0.25:
+            test 64 headings against the latest velocity field
+            replace this aircraft immediately with the safest heading
+```
 
 ![A deterministic next-tick buffer violation between yellow and red aircraft repaired by the 64-heading shield](docs/safety-shield.gif)
 
@@ -212,14 +271,33 @@ This is deliberately not another long-horizon planner. It is a narrow invariant
 check over the state the simulation is about to consume. The animation is a
 deterministic constructed next-tick test rendered by the production game. Its
 displayed before-field, final after-field, and clearances are captured around
-the complete four-pass shield—not an intermediate repair. Exactly one aircraft
-changes velocity; the other retains its planned vector.
+the complete four-pass shield—not an intermediate repair. This selected teaching
+case has exactly one replacement; general frames may have more. The circles and
+inset show physical collision radii because the production sprites are larger
+than their collision geometry.
+
+Across the five final evaluation runs the counter recorded 9,243 velocity
+replacements over 360,005 controlled frames: 2.57 replacements per 100 frames,
+or 1.54 per simulated second. The counter is per aircraft replacement, not per
+unique frame, so calling shield activation “rare” would be misleading.
 
 ## 8. Evaluation
 
 Visual runs helped identify failure modes but were not used to accept changes.
-The fixed evaluator imports the production simulation model and runs five seeded
-traffic sequences for 1,200 simulated seconds each.
+The committed evaluator imports pinned production simulation modules and runs
+seeds `101–105` for 1,200 simulated seconds each. “Survived” means the model
+remained in phase `playing` through 1,200 seconds; any earlier game-over is a
+crash. Throughput counts landings plus departures after second 300.
+
+Path inflation is measured once per landing:
+
+```text
+inflation = aircraft age × native speed
+          / straight-line spawn-to-runway-approach distance
+```
+
+This is an internal simulator proxy rather than geographic track length. It is
+reported because it uses model-native state and is reproducible for every seed.
 
 If any seed crashes, the metric is zero. Otherwise:
 
@@ -235,29 +313,44 @@ This objective makes three trade-offs explicit:
 2. Mean throughput cannot hide one weak traffic sequence.
 3. Detours are penalized only after they exceed the direct path.
 
-An isolated autoresearch loop edits only the controller, evaluates the full
-five-seed suite, commits improvements, and restores regressions. The evaluator,
-game modules, prompt, dependencies, and metric remain fixed.
+Reproduce the complete result and ablation table with:
+
+```bash
+npm run --silent evaluate > /tmp/airport-result.json
+```
+
+The evaluator executes `autopilot.js` itself, not a second controller copy. The
+result records SHA-256 identities for that file and both pinned game modules.
+The isolated autoresearch loop used during development was permitted to edit
+only the controller, evaluated the same full five-seed suite, committed
+improvements, and restored regressions. Its minimal fixed instruction is retained
+as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 
 ## Repository layout
 
 ```text
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
-capture-hero.mjs         two-hour warm-up + one-minute 1× hero capture
-capture-explainers.mjs   staged search, coordination, and shield diagrams
+capture-hero.mjs         30-minute warm-up + three-minute fixed-step hero
+capture-explainers.mjs   staged search, coordination, and shield animations
+evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
+evaluation/fixed/        pinned production model/map modules
+evaluation/results/      machine-readable result with hashes and per-seed rows
 start-runner.sh          persistent background launcher
 status-runner.sh         runner status
 stop-runner.sh           clean shutdown
 ```
 
-The hero is an unmodified production-game run. The explainers use the same
-client as a deterministic test renderer. Production aircraft and runway assets
-stay active on a deliberately simplified dark field; the live spawn system is
-paused; and the actual controller is instrumented during capture. The capture
-fails if an aircraft is paired with the wrong runway, a decision replay uses a
-different velocity field, a completed coordination field violates its stated
-clearance, or the shield animation differs from the final velocity map.
+The hero is a production-engine run with capture-only rendering filters and
+explicit fixed-step advancement. The full aircraft array is restored for every
+60 Hz simulation step; only inactive accumulated ground aircraft are hidden while
+rendering each frame. The explainers use the same client as a deterministic test
+renderer. Production aircraft and runway assets stay active on a deliberately
+simplified dark field; live spawning is paused; and the actual controller is
+instrumented during capture. Capture fails if an aircraft is paired with the
+wrong runway, a decision replay uses a different velocity field, a completed
+coordination field violates its stated clearance, or the shield animation differs
+from the final velocity map.
 
 ## Run
 
@@ -276,6 +369,7 @@ alive after closing the terminal:
 npm run start:background
 npm run status
 npm run stop
+npm run evaluate
 ```
 
 Configuration is environment-based:
@@ -293,9 +387,15 @@ npm start
 The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
-npm run capture:hero       # fast-forward 2 h, record the next minute at 1×
+npm run capture:hero       # fast-forward 30 min, record the next 3 min at 1×
 npm run capture:explainers # rebuild all three staged technical GIFs
 ```
+
+Hero defaults are seed `101`, `TARGET_HOURS=0.5`, `CAPTURE_SECONDS=180`, and
+`HERO_FPS=10`. At that default frame rate, each GIF frame advances exactly six
+1/60-second simulation ticks; wall-clock browser throttling cannot stretch the
+displayed timeline. All four settings can be overridden through environment
+variables.
 
 The game is by [@lapunen](https://github.com/lapunen). The runner does not enter
 a player name, force game over, or submit a leaderboard score.

@@ -1,0 +1,392 @@
+{
+  "schemaVersion": 1,
+  "gameSnapshot": {
+    "source": "https://airport.apunen.com/",
+    "retrievedOn": "2026-07-22"
+  },
+  "controllerSha256": "f2b6dda4888718fd44114451cb9e937368be79c63ac774906136511962ca3b8f",
+  "gameBundleSha256": {
+    "model": "1b38bccdbc3af45ed8f29c10edf66f505b4be98dd96da581d4af24625b7e06a5",
+    "assetsAndMap": "35f450bbc4d37957f258226ce1f1088d3e178b8074593403915340b790c35e59"
+  },
+  "seeds": [
+    101,
+    102,
+    103,
+    104,
+    105
+  ],
+  "warmupSeconds": 300,
+  "durationSeconds": 1200,
+  "bounds": {
+    "minX": -39.87250908482147,
+    "maxX": 39.87250908482153,
+    "minY": -41.776872340890876,
+    "maxY": 41.77687234089083,
+    "corners": [
+      {
+        "x": -39.87250908482147,
+        "y": 14.340904712088388
+      },
+      {
+        "x": -7.083181918691736,
+        "y": 41.77687234089083
+      },
+      {
+        "x": 39.87250908482153,
+        "y": -14.340904712088431
+      },
+      {
+        "x": 7.083181918691778,
+        "y": -41.776872340890876
+      }
+    ]
+  },
+  "definitions": {
+    "survived": "Simulation remained in phase \"playing\" through durationSeconds.",
+    "steadyStateOperationsPerMinute": "Landings plus departures after warmupSeconds, divided by measured post-warm-up minutes.",
+    "meanPathInflation": "For each landing, aircraft age times native speed divided by spawn-to-runway-approach distance; averaged per seed.",
+    "shieldIntervention": "One aircraft velocity replacement during one of four sequential next-tick shield passes."
+  },
+  "variants": {
+    "direct_only": {
+      "options": {
+        "directOnly": true,
+        "shieldPasses": 0
+      },
+      "survived": "0/5",
+      "meanSteadyStateOperationsPerMinute": 0,
+      "worstSeedOperationsPerMinute": 0,
+      "meanPathInflation": 1.0055143146406205,
+      "compositeMetric": 0,
+      "shieldInterventions": 0,
+      "controlledFrames": 22667
+    },
+    "one_planning_sweep": {
+      "options": {
+        "planningPasses": 1
+      },
+      "survived": "5/5",
+      "meanSteadyStateOperationsPerMinute": 54.33232717917234,
+      "worstSeedOperationsPerMinute": 53.399011129468775,
+      "meanPathInflation": 1.1413782953566511,
+      "compositeMetric": 54.07072250767511,
+      "shieldInterventions": 10545,
+      "controlledFrames": 360005
+    },
+    "two_sweeps_no_shield": {
+      "options": {
+        "shieldPasses": 0
+      },
+      "survived": "4/5",
+      "meanSteadyStateOperationsPerMinute": 54.26477642528649,
+      "worstSeedOperationsPerMinute": 53.332345697347094,
+      "meanPathInflation": 1.1015761844866083,
+      "compositeMetric": 0,
+      "shieldInterventions": 0,
+      "controlledFrames": 319272
+    },
+    "final": {
+      "options": {},
+      "survived": "5/5",
+      "meanSteadyStateOperationsPerMinute": 54.97231532754053,
+      "worstSeedOperationsPerMinute": 53.99900001856393,
+      "meanPathInflation": 1.1238799582374444,
+      "compositeMetric": 54.7042105086489,
+      "shieldInterventions": 9243,
+      "controlledFrames": 360005
+    }
+  },
+  "aggregate": {
+    "options": {},
+    "survived": "5/5",
+    "meanSteadyStateOperationsPerMinute": 54.97231532754053,
+    "worstSeedOperationsPerMinute": 53.99900001856393,
+    "meanPathInflation": 1.1238799582374444,
+    "compositeMetric": 54.7042105086489,
+    "shieldInterventions": 9243,
+    "controlledFrames": 360005
+  },
+  "runs": [
+    {
+      "variant": "direct_only",
+      "seed": 101,
+      "survived": false,
+      "crashAtSeconds": 78.28333333333018,
+      "landings": 13,
+      "departures": 1,
+      "operationsAfterWarmup": 0,
+      "steadyStateOperationsPerMinute": 0,
+      "meanPathInflation": 1.0079828193549765,
+      "pathInflationSamples": 13,
+      "controlledFrames": 4697,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "direct_only",
+      "seed": 102,
+      "survived": false,
+      "crashAtSeconds": 169.03333333336,
+      "landings": 36,
+      "departures": 17,
+      "operationsAfterWarmup": 0,
+      "steadyStateOperationsPerMinute": 0,
+      "meanPathInflation": 1.0016996642793412,
+      "pathInflationSamples": 36,
+      "controlledFrames": 10142,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "direct_only",
+      "seed": 103,
+      "survived": false,
+      "crashAtSeconds": 23.633333333333272,
+      "landings": 2,
+      "departures": 0,
+      "operationsAfterWarmup": 0,
+      "steadyStateOperationsPerMinute": 0,
+      "meanPathInflation": 1.0033110871738744,
+      "pathInflationSamples": 2,
+      "controlledFrames": 1418,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "direct_only",
+      "seed": 104,
+      "survived": false,
+      "crashAtSeconds": 62.08333333333109,
+      "landings": 10,
+      "departures": 0,
+      "operationsAfterWarmup": 0,
+      "steadyStateOperationsPerMinute": 0,
+      "meanPathInflation": 1.0110599695446034,
+      "pathInflationSamples": 10,
+      "controlledFrames": 3725,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "direct_only",
+      "seed": 105,
+      "survived": false,
+      "crashAtSeconds": 44.74999999999874,
+      "landings": 6,
+      "departures": 0,
+      "operationsAfterWarmup": 0,
+      "steadyStateOperationsPerMinute": 0,
+      "meanPathInflation": 1.0035180328503068,
+      "pathInflationSamples": 6,
+      "controlledFrames": 2685,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "one_planning_sweep",
+      "seed": 101,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 588,
+      "departures": 383,
+      "operationsAfterWarmup": 827,
+      "steadyStateOperationsPerMinute": 55.13231236463256,
+      "meanPathInflation": 1.155003143792281,
+      "pathInflationSamples": 588,
+      "controlledFrames": 72001,
+      "shieldInterventions": 2107
+    },
+    {
+      "variant": "one_planning_sweep",
+      "seed": 102,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 576,
+      "departures": 384,
+      "operationsAfterWarmup": 816,
+      "steadyStateOperationsPerMinute": 54.398992611294034,
+      "meanPathInflation": 1.1520357290891328,
+      "pathInflationSamples": 576,
+      "controlledFrames": 72001,
+      "shieldInterventions": 2103
+    },
+    {
+      "variant": "one_planning_sweep",
+      "seed": 103,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 574,
+      "departures": 375,
+      "operationsAfterWarmup": 810,
+      "steadyStateOperationsPerMinute": 53.99900001856393,
+      "meanPathInflation": 1.1004753529636844,
+      "pathInflationSamples": 574,
+      "controlledFrames": 72001,
+      "shieldInterventions": 2013
+    },
+    {
+      "variant": "one_planning_sweep",
+      "seed": 104,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 575,
+      "departures": 372,
+      "operationsAfterWarmup": 801,
+      "steadyStateOperationsPerMinute": 53.399011129468775,
+      "meanPathInflation": 1.1775195820596147,
+      "pathInflationSamples": 575,
+      "controlledFrames": 72001,
+      "shieldInterventions": 1967
+    },
+    {
+      "variant": "one_planning_sweep",
+      "seed": 105,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 589,
+      "departures": 377,
+      "operationsAfterWarmup": 821,
+      "steadyStateOperationsPerMinute": 54.73231977190245,
+      "meanPathInflation": 1.1218576688785424,
+      "pathInflationSamples": 589,
+      "controlledFrames": 72001,
+      "shieldInterventions": 2355
+    },
+    {
+      "variant": "two_sweeps_no_shield",
+      "seed": 101,
+      "survived": false,
+      "crashAtSeconds": 521.133333333188,
+      "landings": 214,
+      "departures": 129,
+      "operationsAfterWarmup": 199,
+      "steadyStateOperationsPerMinute": 53.99457340974304,
+      "meanPathInflation": 1.0793950039377243,
+      "pathInflationSamples": 214,
+      "controlledFrames": 31268,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "two_sweeps_no_shield",
+      "seed": 102,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 591,
+      "departures": 389,
+      "operationsAfterWarmup": 834,
+      "steadyStateOperationsPerMinute": 55.59897038948434,
+      "meanPathInflation": 1.0930401164050498,
+      "pathInflationSamples": 591,
+      "controlledFrames": 72001,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "two_sweeps_no_shield",
+      "seed": 103,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 576,
+      "departures": 373,
+      "operationsAfterWarmup": 814,
+      "steadyStateOperationsPerMinute": 54.265661747050665,
+      "meanPathInflation": 1.1150028486145172,
+      "pathInflationSamples": 576,
+      "controlledFrames": 72001,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "two_sweeps_no_shield",
+      "seed": 104,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 586,
+      "departures": 372,
+      "operationsAfterWarmup": 812,
+      "steadyStateOperationsPerMinute": 54.1323308828073,
+      "meanPathInflation": 1.1182041946841867,
+      "pathInflationSamples": 586,
+      "controlledFrames": 72001,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "two_sweeps_no_shield",
+      "seed": 105,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 573,
+      "departures": 366,
+      "operationsAfterWarmup": 800,
+      "steadyStateOperationsPerMinute": 53.332345697347094,
+      "meanPathInflation": 1.1022387587915647,
+      "pathInflationSamples": 573,
+      "controlledFrames": 72001,
+      "shieldInterventions": 0
+    },
+    {
+      "variant": "final",
+      "seed": 101,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 607,
+      "departures": 383,
+      "operationsAfterWarmup": 846,
+      "steadyStateOperationsPerMinute": 56.39895557494455,
+      "meanPathInflation": 1.1540702033127619,
+      "pathInflationSamples": 607,
+      "controlledFrames": 72001,
+      "shieldInterventions": 1837
+    },
+    {
+      "variant": "final",
+      "seed": 102,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 587,
+      "departures": 389,
+      "operationsAfterWarmup": 830,
+      "steadyStateOperationsPerMinute": 55.33230866099761,
+      "meanPathInflation": 1.1167482418431125,
+      "pathInflationSamples": 587,
+      "controlledFrames": 72001,
+      "shieldInterventions": 1961
+    },
+    {
+      "variant": "final",
+      "seed": 103,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 584,
+      "departures": 379,
+      "operationsAfterWarmup": 827,
+      "steadyStateOperationsPerMinute": 55.13231236463256,
+      "meanPathInflation": 1.1137495594262103,
+      "pathInflationSamples": 584,
+      "controlledFrames": 72001,
+      "shieldInterventions": 1396
+    },
+    {
+      "variant": "final",
+      "seed": 104,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 577,
+      "departures": 379,
+      "operationsAfterWarmup": 810,
+      "steadyStateOperationsPerMinute": 53.99900001856393,
+      "meanPathInflation": 1.136297390890514,
+      "pathInflationSamples": 577,
+      "controlledFrames": 72001,
+      "shieldInterventions": 1773
+    },
+    {
+      "variant": "final",
+      "seed": 105,
+      "survived": true,
+      "crashAtSeconds": null,
+      "landings": 579,
+      "departures": 376,
+      "operationsAfterWarmup": 810,
+      "steadyStateOperationsPerMinute": 53.99900001856393,
+      "meanPathInflation": 1.0985343957146232,
+      "pathInflationSamples": 579,
+      "controlledFrames": 72001,
+      "shieldInterventions": 2276
+    }
+  ]
+}
