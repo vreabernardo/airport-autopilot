@@ -11,18 +11,18 @@
       "x": 0,
       "y": 0
     },
-    "conflictSeconds": 6,
+    "conflictSeconds": 4.5,
     "airborneCount": 2,
-    "directClearance": -4.999999999999984,
-    "actualClearance": 5.592993899796388,
+    "directClearance": -4.999999999999993,
+    "actualClearance": 2.9447454248472806,
     "positions": {
       "blue": {
-        "x": -23.132099989063484,
-        "y": 42.05836361647906
+        "x": -17.34907499179761,
+        "y": 31.543772712359296
       },
       "yellow": {
-        "x": 34.73091308692018,
-        "y": -23.617020899105725
+        "x": 26.048184815190133,
+        "y": -17.712765674329294
       }
     }
   },
@@ -64,10 +64,11 @@
   },
   "stop": false,
   "heroAudit": {
-    "directFrames": 18,
-    "coordinatedFrames": 21,
+    "directFrames": 20,
+    "coordinatedFrames": 33,
     "missingFocusFrames": 0,
-    "returnedHomeFrames": 43,
+    "returnedHomeFrames": 34,
+    "minPhysicalClearance": 2.0048768061339826,
     "fullSceneryVisible": true,
     "performancePanelVisible": true
   }

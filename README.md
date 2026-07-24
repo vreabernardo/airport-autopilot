@@ -6,13 +6,14 @@
 
 The hero is a deterministic production-engine demonstration rather than a
 selected random spawn. Two native aircraft are deliberately placed so their
-direct runway headings reach the same world-space point six seconds later. Those independent
-headings physically overlap; the production controller instead assigns a shared
-velocity field that preserves 5.59 world units of edge clearance. The ten-second
-sequence runs at true 1× speed—not a timelapse—while the camera moves from the
-full airport into the intervention and back out again. The game's scenery,
-aircraft meshes, runways, and open performance panel remain visible, and every
-controller decision still executes against the simulator at 60 Hz.
+direct runway headings reach the same world-space point only 4.5 seconds later.
+Those independent headings overlap by 5.0 world units. The production controller
+breaks the symmetry: its initial constant-velocity projection clears by 2.94
+units, and the recorded closest pass never falls below 2.00 units of edge
+separation. The ten-second sequence runs at true 1× speed—not a timelapse—while
+the camera moves from the full airport into the near miss and back out again. The
+game's scenery, aircraft meshes, runways, and open performance panel remain
+visible, and every controller decision still executes at 60 Hz.
 
 The staged capture pauses spawning and is explanatory evidence, not benchmark
 evidence. The panel retains the cumulative score from the seeded warm-up used to
@@ -453,11 +454,12 @@ npm run capture:hero       # stage one deliberate conflict, record the next 10 s
 npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
-Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=10`, and
-`HERO_FPS=12`. The simulator and controller still execute every 1/60-second tick;
-each rendered frame advances exactly five simulation ticks. Wall-clock browser
-throttling therefore cannot stretch the displayed timeline. All four settings
-can be overridden through environment variables.
+Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=10`,
+`HERO_FPS=12`, and `HERO_CONFLICT_SECONDS=4.5`. The simulator and controller
+still execute every 1/60-second tick; each rendered frame advances exactly five
+simulation ticks. Wall-clock browser throttling therefore cannot stretch the
+displayed timeline. All five settings can be overridden through environment
+variables.
 
 The game is by [@lapunen](https://github.com/lapunen). The runner does not enter
 a player name, force game over, or submit a leaderboard score.

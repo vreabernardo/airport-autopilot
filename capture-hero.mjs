@@ -16,6 +16,7 @@ const captureSeconds = Number(process.env.CAPTURE_SECONDS || 10);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
 const outputName = process.env.HERO_OUTPUT || 'strategic-conflict-cinematic.gif';
 const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 12));
+const conflictSeconds = Number(process.env.HERO_CONFLICT_SECONDS || 4.5);
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -71,7 +72,7 @@ try {
   // Headless requestAnimationFrame can be heavily throttled. Freeze its update
   // hook and advance the simulation explicitly so every encoded second contains
   // exactly 60 controller/game ticks regardless of wall-clock capture speed.
-  const captureSetup = await page.evaluate(() => {
+  const captureSetup = await page.evaluate(conflictSeconds => {
     const game = window.__game;
     const runwayFor = kind => game.map.runways.find(runway => runway.color === kind);
     const velocityTo = (aircraft, point) => {
@@ -121,7 +122,6 @@ try {
     }
     while (game.elapsed < 100) game.step(1 / 60);
     const conflictPoint = { x: 0, y: 0 };
-    const conflictSeconds = 6;
     const strategicPosition = sample => {
       const runway = runwayFor(sample.kind);
       const dx = conflictPoint.x - runway.approach.x;
@@ -283,6 +283,7 @@ try {
       coordinatedFrames: 0,
       missingFocusFrames: 0,
       returnedHomeFrames: 0,
+      minPhysicalClearance: Number.POSITIVE_INFINITY,
       fullSceneryVisible: Boolean(sceneryLayer?.visible),
       performancePanelVisible: panelLabels.every(text =>
         [...document.querySelectorAll('body *')].some(element =>
@@ -295,18 +296,18 @@ try {
       const first = game.aircraft.find(aircraft => aircraft.id === firstId);
       const second = game.aircraft.find(aircraft => aircraft.id === secondId);
       let focusAmount = 0;
-      if (time >= .8 && time < 1.4) focusAmount = smooth((time - .8) / .6);
-      else if (time >= 1.4 && time < 4.6) focusAmount = 1;
-      else if (time >= 4.6 && time < 6.5) focusAmount = 1 - smooth((time - 4.6) / 1.9);
-      if (time >= 1.4 && time < 4.6) {
+      if (time >= .4 && time < 1) focusAmount = smooth((time - .4) / .6);
+      else if (time >= 1 && time < 5.4) focusAmount = 1;
+      else if (time >= 5.4 && time < 7.2) focusAmount = 1 - smooth((time - 5.4) / 1.8);
+      if (time >= 1 && time < 5.4) {
         if (first && second) {
-          if (time < 2.9) window.__heroAudit.directFrames++;
+          if (time < 2.6) window.__heroAudit.directFrames++;
           else window.__heroAudit.coordinatedFrames++;
         } else {
           window.__heroAudit.missingFocusFrames++;
         }
       }
-      if (time >= 6.5 && focusAmount < 1e-6) window.__heroAudit.returnedHomeFrames++;
+      if (time >= 7.2 && focusAmount < 1e-6) window.__heroAudit.returnedHomeFrames++;
       if (first && second) {
         window.__heroLastFocus = {
           x: (first.pos.x + second.pos.x) / 2,
@@ -319,10 +320,10 @@ try {
         home.x + (midpoint.x - home.x) * focusAmount,
         home.y + (midpoint.y - home.y) * focusAmount,
       );
-      viewport.camera.zoom = home.zoom + (2.6 - home.zoom) * focusAmount;
+      viewport.camera.zoom = home.zoom + (3.1 - home.zoom) * focusAmount;
       viewport.applyCamera();
       viewport.camera.updateProjectionMatrix();
-      const focusOnly = time >= .8 && time < 6.5 && first && second;
+      const focusOnly = time >= .4 && time < 7.2 && first && second;
       window.__heroRenderIds = focusOnly ? new Set([first.id, second.id]) : null;
       airportRenderer.syncAircraft(
         focusOnly ? [first, second] : game.aircraft,
@@ -343,33 +344,27 @@ try {
       context.lineWidth = 2;
       context.strokeRect(760, 18, 414, 82);
       label('AUTONOMOUS AIRSPACE · 60 HZ', 780, 47, '#f5edcf', 'left', 15);
-      let phase = 'TWO AIRCRAFT · ONE CONFLICT POINT';
-      if (time >= .8 && time < 1.4) phase = 'PROJECTING DIRECT ROUTES';
-      else if (time >= 1.4 && time < 2.9) phase = 'DIRECT ROUTES INTERSECT';
-      else if (time >= 2.9 && time < 4.6) phase = 'COORDINATED VELOCITIES';
-      else if (time >= 4.6 && time < 6.5) phase = 'CONFLICT CLEARED';
-      else if (time >= 6.5) phase = 'CONTROL CONTINUES';
+      let phase = 'TWO AIRCRAFT · COLLISION COURSE';
+      if (time >= .4 && time < 1) phase = 'CLOSING ON THE CONFLICT';
+      else if (time >= 1 && time < 2.6) phase = 'DIRECT HEADINGS · CERTAIN IMPACT';
+      else if (time >= 2.6 && time < 4.7) phase = 'CONTROLLER BREAKS SYMMETRY';
+      else if (time >= 4.7 && time < 7.2) phase = 'CLOSE PASS · CONFLICT CLEARED';
+      else if (time >= 7.2) phase = 'AIRSPACE SECURE';
       label(phase, 780, 79, '#43d7e5', 'left', 22);
 
-      if (!first || !second || time < .8 || time >= 4.8) return;
+      if (!first || !second || time < .4 || time >= 5.6) return;
       const firstPoint = viewport.worldToScreen(first.pos);
       const secondPoint = viewport.worldToScreen(second.pos);
       reticle(firstPoint, '#43d7e5', time);
       reticle(secondPoint, '#f5edcf', time + .2);
-      if (time < 2.9) {
+      if (time < 2.6) {
         const firstRunway = runwayFor(first.kind);
         const secondRunway = runwayFor(second.kind);
         const firstVelocity = velocityTo(first, firstRunway.approach);
         const secondVelocity = velocityTo(second, secondRunway.approach);
         const prediction = predictedPair(first, firstVelocity, second, secondVelocity);
-        arrow(firstPoint, viewport.worldToScreen({
-          x: first.pos.x + firstVelocity.x * 2.2,
-          y: first.pos.y + firstVelocity.y * 2.2,
-        }), '#f2ae49', 5, [9, 6]);
-        arrow(secondPoint, viewport.worldToScreen({
-          x: second.pos.x + secondVelocity.x * 2.2,
-          y: second.pos.y + secondVelocity.y * 2.2,
-        }), '#f2ae49', 5, [9, 6]);
+        arrow(firstPoint, viewport.worldToScreen(prediction.a), '#43d7e5', 6, [10, 6]);
+        arrow(secondPoint, viewport.worldToScreen(prediction.b), '#ffd21c', 6, [10, 6]);
         const collision = viewport.worldToScreen({
           x: (prediction.a.x + prediction.b.x) / 2,
           y: (prediction.a.y + prediction.b.y) / 2,
@@ -380,7 +375,12 @@ try {
         context.strokeStyle = '#ff4f91';
         context.lineWidth = 4;
         context.stroke();
-        label('PREDICTED CONFLICT', collision.x, collision.y - 38, '#ff4f91', 'center', 14);
+        line({ x: collision.x - 15, y: collision.y - 15 },
+          { x: collision.x + 15, y: collision.y + 15 }, '#ff4f91', 5);
+        line({ x: collision.x + 15, y: collision.y - 15 },
+          { x: collision.x - 15, y: collision.y + 15 }, '#ff4f91', 5);
+        label(`IMPACT IN ${prediction.time.toFixed(1)} S`,
+          collision.x, collision.y - 42, '#ff4f91', 'center', 18);
       } else {
         for (const [aircraft, color] of [[first, '#43d7e5'], [second, '#f5edcf']]) {
           const velocity = currentVelocity(aircraft);
@@ -394,17 +394,22 @@ try {
             6,
           );
         }
-        label('SHARED FIELD · SAFE', (firstPoint.x + secondPoint.x) / 2,
-          Math.min(firstPoint.y, secondPoint.y) - 48, '#43d7e5', 'center', 16);
+        const separation = predictedPair(
+          first, currentVelocity(first), second, currentVelocity(second),
+        ).clearance;
+        label(`EDGE CLEARANCE ${Math.max(0, separation).toFixed(1)}`,
+          (firstPoint.x + secondPoint.x) / 2,
+          Math.min(firstPoint.y, secondPoint.y) - 64, '#43d7e5', 'center', 16);
       }
     };
+    window.__heroFocusIds = [...focus.ids];
     window.__captureAircraft = game.aircraft;
     window.__captureWarnings = game.spawnWarnings;
     game.aircraft = game.aircraft.filter(aircraft =>
       aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
     game.spawnWarnings = [];
     return { start: game.elapsed, focus };
-  });
+  }, conflictSeconds);
   const capturedFrames = Math.round(captureSeconds * outputFps);
   let completedSteps = 0;
   for (let index = 0; index < capturedFrames; index++) {
@@ -415,7 +420,22 @@ try {
       const game = window.__game;
       game.aircraft = window.__captureAircraft;
       game.spawnWarnings = window.__captureWarnings;
-      for (let step = 0; step < count; step++) window.__game.step(1 / 60);
+      for (let step = 0; step < count; step++) {
+        window.__game.step(1 / 60);
+        const [firstId, secondId] = window.__heroFocusIds;
+        const first = game.aircraft.find(aircraft => aircraft.id === firstId);
+        const second = game.aircraft.find(aircraft => aircraft.id === secondId);
+        if (first && second) {
+          const clearance = Math.hypot(
+            second.pos.x - first.pos.x,
+            second.pos.y - first.pos.y,
+          ) - first.spec.radius - second.spec.radius;
+          window.__heroAudit.minPhysicalClearance = Math.min(
+            window.__heroAudit.minPhysicalClearance,
+            clearance,
+          );
+        }
+      }
       window.__captureAircraft = game.aircraft;
       window.__captureWarnings = game.spawnWarnings;
       game.aircraft = game.aircraft.filter(aircraft =>
@@ -437,6 +457,9 @@ try {
   if (finalState.phase !== 'playing') throw new Error(`Game over at ${finalState.elapsed.toFixed(1)} seconds.`);
   if (!finalState.heroAudit.fullSceneryVisible) throw new Error('Hero audit failed: full game scenery is hidden.');
   if (!finalState.heroAudit.performancePanelVisible) throw new Error('Hero audit failed: performance panel is hidden.');
+  if (finalState.heroAudit.minPhysicalClearance < 2) {
+    throw new Error(`Hero audit failed: closest pass was ${finalState.heroAudit.minPhysicalClearance}.`);
+  }
   if (captureSeconds >= 6.5) {
     if (finalState.heroAudit.missingFocusFrames > 0
         || finalState.heroAudit.directFrames < outputFps
