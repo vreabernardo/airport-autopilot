@@ -12,7 +12,7 @@ const projectDir = process.env.PROJECT_DIR || path.dirname(fileURLToPath(import.
 const outputDir = process.env.HERO_OUTPUT_DIR || path.join(projectDir, 'docs');
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS ?? 0) * 60 * 60;
-const captureSeconds = Number(process.env.CAPTURE_SECONDS || 18);
+const captureSeconds = Number(process.env.CAPTURE_SECONDS || 26);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
 const outputName = process.env.HERO_OUTPUT || 'holding-pattern-cinematic.gif';
 const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 12));
@@ -75,9 +75,11 @@ try {
     const game = window.__game;
     const runwayFor = kind => game.map.runways.find(runway => runway.color === kind);
     const samples = {};
-    for (let tick = 0; tick < 60 * 3 * 60 && !samples.blue; tick++) {
+    for (let tick = 0; tick < 60 * 3 * 60
+        && (!samples.blue || !samples.yellow || !samples.red); tick++) {
       for (const aircraft of game.aircraft) {
-        if (aircraft.state === 'flying' && aircraft.kind === 'blue') {
+        if (aircraft.state === 'flying'
+            && (aircraft.kind === 'blue' || aircraft.kind === 'yellow' || aircraft.kind === 'red')) {
           samples[aircraft.kind] ||= {
             ...aircraft,
             pos: { ...aircraft.pos },
@@ -88,40 +90,49 @@ try {
       }
       game.step(1 / 60);
     }
-    if (!samples.blue) {
-      throw new Error('Could not load a native blue aircraft asset.');
+    if (!samples.blue || !samples.yellow || !samples.red) {
+      throw new Error('Could not load native blue, yellow, and red aircraft assets.');
     }
     while (game.elapsed < 100) game.step(1 / 60);
-    const runway = runwayFor('blue');
     const hold = {
       center: { x: -3, y: -1 },
       radiusX: 15,
       radiusY: 23,
-      gatePhase: Math.PI * 1.5,
     };
     const pointOnHold = phase => ({
       x: hold.center.x + Math.cos(phase) * hold.radiusX,
       y: hold.center.y + Math.sin(phase) * hold.radiusY,
     });
-    const phaseSpeed = phase => samples.blue.spec.speed / Math.hypot(
+    const phaseSpeed = (phase, speed) => speed / Math.hypot(
       hold.radiusX * Math.sin(phase),
       hold.radiusY * Math.cos(phase),
     );
-    const rewindPhase = (phase, seconds) => {
+    const rewindPhase = (phase, seconds, speed) => {
       const steps = Math.ceil(seconds * 60);
       for (let step = 0; step < steps; step++) {
-        phase -= phaseSpeed(phase) * seconds / steps;
+        phase -= phaseSpeed(phase, speed) * seconds / steps;
       }
       return phase;
     };
-    const arrivalPlan = Array.from({ length: 5 }, (_, index) => {
-      const releaseAt = 1 + index * 3.1;
-      return {
-        releaseAt,
-        phase: rewindPhase(hold.gatePhase, releaseAt),
-        age: index,
-      };
-    });
+    const releasedPlans = [
+      { kind: 'blue', releaseAt: 1, gatePhase: Math.PI * 1.5 },
+      { kind: 'yellow', releaseAt: 3, gatePhase: Math.PI * .75 },
+      { kind: 'red', releaseAt: 12, gatePhase: Math.PI * 1.75 },
+    ].map((plan, index) => ({
+      ...plan,
+      phase: rewindPhase(
+        plan.gatePhase,
+        plan.releaseAt,
+        samples[plan.kind].spec.speed,
+      ),
+      age: index,
+    }));
+    const arrivalPlan = [
+      ...releasedPlans,
+      { kind: 'yellow', releaseAt: null, gatePhase: null, phase: 2, age: 3 },
+      { kind: 'blue', releaseAt: null, gatePhase: null, phase: 3, age: 4 },
+      { kind: 'red', releaseAt: null, gatePhase: null, phase: 4.8, age: 5 },
+    ];
     const stageAircraft = (plan, id) => {
       const pos = pointOnHold(plan.phase);
       const tangent = Math.atan2(
@@ -129,7 +140,7 @@ try {
         -hold.radiusX * Math.sin(plan.phase),
       );
       return {
-        ...samples.blue,
+        ...samples[plan.kind],
         id,
         pos,
         heading: tangent,
@@ -159,6 +170,7 @@ try {
         aircraft,
         phase: arrivalPlan[index].phase,
         releaseAt: arrivalPlan[index].releaseAt,
+        gatePhase: arrivalPlan[index].gatePhase,
         released: false,
       },
     ]));
@@ -169,23 +181,26 @@ try {
       for (const entry of holdState.values()) {
         const aircraft = this.aircraft.find(candidate => candidate.id === entry.aircraft.id);
         if (!aircraft || entry.released) continue;
-        if (heroElapsed + dt >= entry.releaseAt) {
+        if (entry.releaseAt !== null && heroElapsed + dt >= entry.releaseAt) {
           entry.released = true;
-          const gate = pointOnHold(hold.gatePhase);
+          const gate = pointOnHold(entry.gatePhase);
+          const runway = runwayFor(aircraft.kind);
           window.__heroAudit.releaseEvents.push({
             id: aircraft.id,
+            kind: aircraft.kind,
+            targetColor: runway.color,
             time: heroElapsed + dt,
             gateDeviation: Math.hypot(aircraft.pos.x - gate.x, aircraft.pos.y - gate.y),
           });
           aircraft.target = runway;
-          aircraft.path = [{ ...runway.approach }];
+          aircraft.path = [{ ...runway.approach }, { ...runway.end }];
           aircraft.heading = Math.atan2(
             runway.approach.y - aircraft.pos.y,
             runway.approach.x - aircraft.pos.x,
           );
           continue;
         }
-        entry.phase += phaseSpeed(entry.phase) * dt;
+        entry.phase += phaseSpeed(entry.phase, aircraft.spec.speed) * dt;
         const next = pointOnHold(entry.phase);
         const holdSpeed = Math.hypot(
           next.x - aircraft.pos.x,
@@ -199,6 +214,10 @@ try {
           window.__heroAudit.holdSpeedMax,
           holdSpeed,
         );
+        window.__heroAudit.holdSpeedErrorMax = Math.max(
+          window.__heroAudit.holdSpeedErrorMax,
+          Math.abs(holdSpeed - aircraft.spec.speed),
+        );
         const tangent = Math.atan2(
           hold.radiusY * Math.cos(entry.phase),
           -hold.radiusX * Math.sin(entry.phase),
@@ -209,13 +228,26 @@ try {
         }];
         heldNext.push({ aircraft, next, tangent });
       }
-      const landingsBefore = this.score.landings;
+      const eventsBefore = this.events.length;
+      const statesBefore = new Map(this.aircraft.map(aircraft => [
+        aircraft.id,
+        aircraft.state,
+      ]));
       const result = nativeStep(dt);
-      if (this.score.landings > landingsBefore) {
+      for (const event of this.events.slice(eventsBefore).filter(event => event.type === 'land')) {
         window.__heroAudit.landingEvents.push({
           time: this.elapsed - stagedAt,
-          count: this.score.landings - landingsBefore,
+          kind: event.color,
         });
+      }
+      for (const aircraft of this.aircraft) {
+        if (statesBefore.get(aircraft.id) === 'landing' && aircraft.state === 'taxiing-in') {
+          window.__heroAudit.rolloutEvents.push({
+            id: aircraft.id,
+            kind: aircraft.kind,
+            time: this.elapsed - stagedAt,
+          });
+        }
       }
       for (const { aircraft, next, tangent } of heldNext) {
         if (!this.aircraft.includes(aircraft) || aircraft.state !== 'flying') continue;
@@ -232,11 +264,11 @@ try {
       ids: staged.map(aircraft => aircraft.id),
       staged: true,
       captureControl: 'deterministic racetrack hold with timed runway releases',
-      runwayKind: runway.color,
-      runway: {
+      runways: game.map.runways.map(runway => ({
+        color: runway.color,
         approach: { ...runway.approach },
         end: { ...runway.end },
-      },
+      })),
       hold,
       arrivalPlan,
       airborneCount: staged.length,
@@ -316,8 +348,10 @@ try {
       minPhysicalPair: null,
       holdSpeedMin: Number.POSITIVE_INFINITY,
       holdSpeedMax: 0,
+      holdSpeedErrorMax: 0,
       releaseEvents: [],
       landingEvents: [],
+      rolloutEvents: [],
       fullSceneryVisible: Boolean(sceneryLayer?.visible),
       performancePanelVisible: panelLabels.every(text =>
         [...document.querySelectorAll('body *')].some(element =>
@@ -346,10 +380,10 @@ try {
         window.__heroAudit.returnedHomeFrames++;
       }
       if (aircraft.length) {
-        const runwayMidpoint = {
-          x: (focus.runway.approach.x + focus.runway.end.x) / 2,
-          y: (focus.runway.approach.y + focus.runway.end.y) / 2,
-        };
+        const runwayMidpoint = focus.runways.reduce((sum, runway) => ({
+          x: sum.x + (runway.approach.x + runway.end.x) / 2 / focus.runways.length,
+          y: sum.y + (runway.approach.y + runway.end.y) / 2 / focus.runways.length,
+        }), { x: 0, y: 0 });
         window.__heroLastFocus = {
           x: (aircraft.reduce((sum, item) => sum + item.pos.x, 0)
             + runwayMidpoint.x * 2) / (aircraft.length + 2),
@@ -363,7 +397,7 @@ try {
         home.x + (midpoint.x - home.x) * focusAmount,
         home.y + (midpoint.y - home.y) * focusAmount,
       );
-      viewport.camera.zoom = home.zoom + (2.05 - home.zoom) * focusAmount;
+      viewport.camera.zoom = home.zoom + (1.55 - home.zoom) * focusAmount;
       viewport.applyCamera();
       viewport.camera.updateProjectionMatrix();
       const focusOnly = time >= .5 && time < captureSeconds - 1 && aircraft.length;
@@ -387,10 +421,12 @@ try {
       context.lineWidth = 2;
       context.strokeRect(760, 18, 414, 82);
       label('AUTONOMOUS AIRSPACE · 60 HZ', 780, 47, '#f5edcf', 'left', 15);
-      let phase = 'BLUE RUNWAY · FIVE ARRIVALS';
-      if (landing.length) phase = `CLEARED TO LAND · ${landing.length} ON FINAL`;
-      else if (completed) phase = `${completed} LANDED · ${flying.length} IN SEQUENCE`;
-      else if (time >= 1.5) phase = 'HOLDING PATTERN · ARRIVAL SEQUENCE';
+      let phase = 'THREE RUNWAYS · SIX ARRIVALS';
+      if (landing.length) {
+        phase = `${[...new Set(landing.map(item => item.kind.toUpperCase()))].join(' + ')} ON FINAL`;
+      } else if (completed) {
+        phase = `${completed} LANDED · ${flying.length} STILL HOLDING`;
+      } else if (time >= 1.5) phase = 'RACETRACK HOLD · ARRIVAL SEQUENCE';
       label(phase, 780, 79, '#43d7e5', 'left', 22);
     };
     window.__heroFocusIds = [...focus.ids];
@@ -415,7 +451,9 @@ try {
         window.__game.step(1 / 60);
         const focus = window.__heroFocusIds
           .map(id => game.aircraft.find(aircraft => aircraft.id === id))
-          .filter(aircraft => aircraft?.state === 'flying' || aircraft?.state === 'departing');
+          .filter(aircraft => aircraft?.state === 'flying'
+            || aircraft?.state === 'departing'
+            || aircraft?.state === 'landing');
         for (let firstIndex = 0; firstIndex < focus.length; firstIndex++) {
           for (let secondIndex = firstIndex + 1; secondIndex < focus.length; secondIndex++) {
             const first = focus[firstIndex];
@@ -453,23 +491,35 @@ try {
   if (!finalState.heroAudit.fullSceneryVisible) throw new Error('Hero audit failed: full game scenery is hidden.');
   if (!finalState.heroAudit.performancePanelVisible) throw new Error('Hero audit failed: performance panel is hidden.');
   if (finalState.heroAudit.minPhysicalClearance < 2) {
-    throw new Error(`Hero audit failed: closest pass was ${finalState.heroAudit.minPhysicalClearance}.`);
+    throw new Error(`Hero audit failed: closest pass ${JSON.stringify({
+      clearance: finalState.heroAudit.minPhysicalClearance,
+      pair: finalState.heroAudit.minPhysicalPair,
+    })}.`);
   }
   if (captureSeconds >= 12) {
     const releaseEvents = finalState.heroAudit.releaseEvents;
     const landingEvents = finalState.heroAudit.landingEvents;
+    const rolloutEvents = finalState.heroAudit.rolloutEvents;
     const maxGateDeviation = Math.max(...releaseEvents.map(event => event.gateDeviation));
-    const landingGaps = landingEvents.slice(1).map((event, index) =>
-      event.time - landingEvents[index].time);
+    const colors = events => [...new Set(events.map(event => event.kind))].sort().join(',');
+    const rolloutDurations = rolloutEvents.map(rollout => {
+      const landing = landingEvents.find(event => event.kind === rollout.kind);
+      return landing ? rollout.time - landing.time : 0;
+    });
     if (finalState.heroAudit.holdingFrames < outputFps * 2
-        || finalState.heroAudit.landingFrames < 1
-        || finalState.heroAudit.landingsCompleted !== 5
-        || releaseEvents.length !== 5
-        || landingEvents.reduce((sum, event) => sum + event.count, 0) !== 5
+        || finalState.heroAudit.landingFrames < outputFps * 6
+        || finalState.heroAudit.landingsCompleted !== 3
+        || finalState.airborne !== 3
+        || releaseEvents.length !== 3
+        || landingEvents.length !== 3
+        || rolloutEvents.length !== 3
+        || colors(releaseEvents) !== 'blue,red,yellow'
+        || colors(landingEvents) !== 'blue,red,yellow'
+        || colors(rolloutEvents) !== 'blue,red,yellow'
+        || releaseEvents.some(event => event.kind !== event.targetColor)
         || maxGateDeviation > .5
-        || finalState.heroAudit.holdSpeedMin < 7.9
-        || finalState.heroAudit.holdSpeedMax > 8.1
-        || landingGaps.some(gap => gap < 2.5)) {
+        || finalState.heroAudit.holdSpeedErrorMax > .02
+        || rolloutDurations.some(duration => duration < 6 || duration > 10)) {
       throw new Error(`Hero audit failed: arrival sequence ${JSON.stringify(finalState.heroAudit)}.`);
     }
     if (finalState.heroAudit.returnedHomeFrames < outputFps / 2) {

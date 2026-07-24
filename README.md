@@ -2,23 +2,27 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Five aircraft fly a racetrack hold and land in sequence](docs/holding-pattern-cinematic.gif)
+![Blue, yellow, and red aircraft leave a racetrack hold and land](docs/holding-pattern-cinematic.gif)
 
 The hero is a deterministic game-engine visualization rather than a selected
-random spawn. Five native blue aircraft enter a racetrack hold parallel to their
-runway. A capture-only arrival sequencer releases one aircraft from the same
-gate every 3.1 seconds; the unmodified simulator then performs each final
-approach, touchdown, and score update. All five land in order. While holding,
-the measured speed stays between 7.987 and 8.013 world units per second, the
-largest release-gate error is 0.057 units, and airborne edge clearance never
-falls below 13.39 units.
+random spawn. Six native aircraft—two blue, two yellow, and two red—enter one
+racetrack hold. A capture-only arrival sequencer releases one aircraft of each
+color toward its matching runway while the other three continue circling. Each
+released route contains both the threshold and runway-end waypoints, so the
+unmodified simulator visibly performs the final approach, touchdown, full
+runway rollout, and score update.
 
-The eighteen-second sequence runs at true 1× speed—not a timelapse—and uses the
-game's scenery, native meshes, runway, landing state machine, and open
-performance panel. The holding sequencer is capture choreography and is not
-benchmark evidence for the production controller. The benchmark below executes
-`autopilot.js` over five seeds and discards each run's first five minutes. The
-shorter animations isolate individual production-controller stages.
+The blue rollout remains visible for 8.00 seconds, yellow for 8.58, and red for
+7.12. While holding, every color stays within 0.018 world units per second of
+its native speed; the largest release-gate error is 0.024 units; and airborne
+edge clearance never falls below 3.66 units. The 26-second sequence runs at true
+1× speed—not a timelapse—and retains the full scenery, native meshes, all three
+runways, and open performance panel.
+
+The holding sequencer is capture choreography and is not benchmark evidence for
+the production controller. The benchmark below executes `autopilot.js` over five
+seeds and discards each run's first five minutes. The shorter animations isolate
+individual production-controller stages.
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
@@ -387,7 +391,7 @@ as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 ```text
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
-capture-hero.mjs         five-aircraft hold + 18-second fixed-step cinematic
+capture-hero.mjs         six-aircraft hold + 26-second fixed-step cinematic
 capture-explainers.mjs   five controller-recorded technical animations
 evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
 evaluation/fixed/        pinned production model/map modules
@@ -399,13 +403,14 @@ stop-runner.sh           clean shutdown
 
 The hero uses the production game engine with full scenery, a live performance
 panel, capture-only camera work, and explicit fixed-step advancement. After a
-seeded warm-up, capture replaces random traffic with five blue aircraft evenly
-spaced around an audited racetrack hold and pauses spawning. The capture
-sequencer preserves native aircraft speed, releases each arrival at one gate,
-and hands the final approach and landing to the game's state machine. Rendering
-suppresses only redundant path, halo, warning-marker, and transient-result
-layers; native aircraft, runways, scenery, and the performance panel remain
-active. The explainers use the same client as a deterministic test renderer.
+seeded warm-up, capture replaces random traffic with two aircraft of every
+runway color around an audited racetrack hold and pauses spawning. The capture
+sequencer preserves each color's native speed, releases one blue, yellow, and
+red arrival through audited gates, and hands the two-waypoint final approach and
+runway rollout to the game's state machine. Rendering suppresses only redundant
+path, halo, warning-marker, and transient-result layers; native aircraft,
+runways, scenery, and the performance panel remain active. The explainers use
+the same client as a deterministic test renderer.
 For those captures, production aircraft and runway assets stay active on a
 deliberately simplified dark field, live spawning is paused, and the actual
 controller is instrumented. Capture fails if a native aircraft mesh stops
@@ -450,11 +455,11 @@ npm start
 The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
-npm run capture:hero       # stage the hold and five sequential landings
+npm run capture:hero       # stage a multicolor hold and three runway rollouts
 npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
-Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=18`, and
+Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=26`, and
 `HERO_FPS=12`. The simulator still executes every 1/60-second tick; each
 rendered frame advances exactly five simulation ticks. Wall-clock browser
 throttling therefore cannot stretch the displayed timeline. All four settings

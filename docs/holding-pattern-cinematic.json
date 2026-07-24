@@ -1,64 +1,105 @@
 {
   "seed": 101,
-  "capturedFrames": 216,
+  "capturedFrames": 312,
   "focus": {
     "ids": [
       9801,
       9802,
       9803,
       9804,
-      9805
+      9805,
+      9806
     ],
     "staged": true,
     "captureControl": "deterministic racetrack hold with timed runway releases",
-    "runwayKind": "blue",
-    "runway": {
-      "approach": {
-        "x": 22,
-        "y": -40
+    "runways": [
+      {
+        "color": "yellow",
+        "approach": {
+          "x": -50,
+          "y": 34
+        },
+        "end": {
+          "x": 10,
+          "y": 34
+        }
       },
-      "end": {
-        "x": 22,
-        "y": 24
+      {
+        "color": "blue",
+        "approach": {
+          "x": 22,
+          "y": -40
+        },
+        "end": {
+          "x": 22,
+          "y": 24
+        }
+      },
+      {
+        "color": "red",
+        "approach": {
+          "x": 40,
+          "y": -38
+        },
+        "end": {
+          "x": 40,
+          "y": 26
+        }
       }
-    },
+    ],
     "hold": {
       "center": {
         "x": -3,
         "y": -1
       },
       "radiusX": 15,
-      "radiusY": 23,
-      "gatePhase": 4.71238898038469
+      "radiusY": 23
     },
     "arrivalPlan": [
       {
+        "kind": "blue",
         "releaseAt": 1,
+        "gatePhase": 4.71238898038469,
         "phase": 4.2051371335596475,
         "age": 0
       },
       {
-        "releaseAt": 4.1,
-        "phase": 3.0261626671295234,
+        "kind": "yellow",
+        "releaseAt": 3,
+        "gatePhase": 2.356194490192345,
+        "phase": 1.0704927606737784,
         "age": 1
       },
       {
-        "releaseAt": 7.2,
-        "phase": 1.7529211737079788,
+        "kind": "red",
+        "releaseAt": 12,
+        "gatePhase": 5.497787143782138,
+        "phase": -0.19103775274735396,
         "age": 2
       },
       {
-        "releaseAt": 10.3,
-        "phase": 0.35663586918353846,
+        "kind": "yellow",
+        "releaseAt": null,
+        "gatePhase": null,
+        "phase": 2,
         "age": 3
       },
       {
-        "releaseAt": 13.4,
-        "phase": -0.7655927586210294,
+        "kind": "blue",
+        "releaseAt": null,
+        "gatePhase": null,
+        "phase": 3,
         "age": 4
+      },
+      {
+        "kind": "red",
+        "releaseAt": null,
+        "gatePhase": null,
+        "phase": 4.8,
+        "age": 5
       }
     ],
-    "airborneCount": 5,
+    "airborneCount": 6,
     "positions": [
       {
         "id": 9801,
@@ -70,45 +111,53 @@
       },
       {
         "id": 9802,
-        "kind": "blue",
+        "kind": "yellow",
         "pos": {
-          "x": -17.90018029439705,
-          "y": 1.6489979538353094
+          "x": 4.195378812664216,
+          "y": 19.18105063443395
         }
       },
       {
         "id": 9803,
-        "kind": "blue",
+        "kind": "red",
         "pos": {
-          "x": -5.716795273942151,
-          "y": 21.619604417357166
+          "x": 11.727115763101283,
+          "y": -5.367191025928101
         }
       },
       {
         "id": 9804,
-        "kind": "blue",
+        "kind": "yellow",
         "pos": {
-          "x": 11.056149331550657,
-          "y": 7.029846628583551
+          "x": -9.242202548207135,
+          "y": 19.913840816990678
         }
       },
       {
         "id": 9805,
         "kind": "blue",
         "pos": {
-          "x": 7.814575851763694,
-          "y": -16.93818309713038
+          "x": -17.84988744900668,
+          "y": 2.245760185376946
+        }
+      },
+      {
+        "id": 9806,
+        "kind": "red",
+        "pos": {
+          "x": -1.687515248408304,
+          "y": -23.911786003224336
         }
       }
     ]
   },
   "ok": true,
   "phase": "playing",
-  "elapsed": 118.01666666666125,
-  "landings": 26,
+  "elapsed": 126.0166666666608,
+  "landings": 24,
   "departures": 1,
-  "airborne": 0,
-  "total": 5,
+  "airborne": 3,
+  "total": 6,
   "warnings": 0,
   "bounds": {
     "minX": -39.87250908482147,
@@ -140,64 +189,70 @@
   },
   "stop": true,
   "heroAudit": {
-    "holdingFrames": 166,
-    "landingFrames": 3,
-    "landingsCompleted": 5,
+    "holdingFrames": 88,
+    "landingFrames": 224,
+    "landingsCompleted": 3,
     "returnedHomeFrames": 13,
-    "minPhysicalClearance": 13.389808918470713,
+    "minPhysicalClearance": 3.6580572617934424,
     "minPhysicalPair": [
       9801,
-      9805
+      9806
     ],
-    "holdSpeedMin": 7.986530482123795,
-    "holdSpeedMax": 8.013474580949968,
+    "holdSpeedMin": 6.989687153292279,
+    "holdSpeedMax": 9.017054135647111,
+    "holdSpeedErrorMax": 0.017054135647111224,
     "releaseEvents": [
       {
         "id": 9801,
+        "kind": "blue",
+        "targetColor": "blue",
         "time": 1.0166666666666098,
         "gateDeviation": 0.018449529515076665
       },
       {
         "id": 9802,
-        "time": 4.1166666666664335,
-        "gateDeviation": 0.05648120047015528
+        "kind": "yellow",
+        "targetColor": "yellow",
+        "time": 3.016666666666496,
+        "gateDeviation": 0.014334374314676207
       },
       {
         "id": 9803,
-        "time": 7.216666666666257,
-        "gateDeviation": 0.0028911395558758953
-      },
-      {
-        "id": 9804,
-        "time": 10.316666666666082,
-        "gateDeviation": 0.05215021375141226
-      },
-      {
-        "id": 9805,
-        "time": 13.416666666665906,
-        "gateDeviation": 0.03546501824836091
+        "kind": "red",
+        "targetColor": "red",
+        "time": 12.016666666665985,
+        "gateDeviation": 0.023872910032147338
       }
     ],
     "landingEvents": [
       {
-        "time": 4.649999999999736,
-        "count": 1
+        "time": 4.7166666666663986,
+        "kind": "blue"
       },
       {
-        "time": 7.766666666666225,
-        "count": 1
+        "time": 8.849999999999497,
+        "kind": "yellow"
       },
       {
-        "time": 10.849999999999383,
-        "count": 1
+        "time": 16.283333333332408,
+        "kind": "red"
+      }
+    ],
+    "rolloutEvents": [
+      {
+        "id": 9801,
+        "kind": "blue",
+        "time": 12.716666666665944
       },
       {
-        "time": 13.966666666665873,
-        "count": 1
+        "id": 9802,
+        "kind": "yellow",
+        "time": 17.433333333332342
       },
       {
-        "time": 17.066666666665697,
-        "count": 1
+        "id": 9803,
+        "kind": "red",
+        "time": 23.39999999999867
       }
     ],
     "fullSceneryVisible": true,
