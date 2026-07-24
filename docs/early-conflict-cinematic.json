@@ -20,7 +20,7 @@
   "departures": 6,
   "airborne": 2,
   "total": 24,
-  "warnings": 1,
+  "warnings": 0,
   "bounds": {
     "minX": -39.87250908482147,
     "maxX": 39.87250908482153,

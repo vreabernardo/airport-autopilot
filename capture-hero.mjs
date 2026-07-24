@@ -42,12 +42,17 @@ try {
     if (!source.includes(needle)) throw new Error('Game-model patch point was not found.');
     const exposed = source
       .replace(needle, 'X=window.__game=new ot,')
-      .replace(/Y\s*=\s*new se\(d\)/, 'Y=window.__airportViewport=new se(d)');
+      .replace(/Y\s*=\s*new se\(d\)/, 'Y=window.__airportViewport=new se(d)')
+      .replace('fe=new oe(Y)', 'fe=window.__airportRenderer=new oe(Y)');
     await route.fulfill({ response, body: exposed });
   });
   await page.addInitScript(solverSource);
   await page.goto('https://airport.apunen.com/', { waitUntil: 'domcontentloaded', timeout: 90_000 });
-  await page.waitForFunction(() => window.__apStatus?.().phase === 'playing', undefined, { timeout: 90_000 });
+  await page.waitForFunction(
+    () => window.__apStatus?.().phase === 'playing' && window.__airportRenderer,
+    undefined,
+    { timeout: 90_000 },
+  );
   const fastForwardUntil = targetSeconds;
   while (true) {
     const state = await page.evaluate(limit => {
@@ -143,6 +148,24 @@ try {
 
     game.update = () => {};
     const viewport = window.__airportViewport;
+    const airportRenderer = window.__airportRenderer;
+    const syncAircraft = airportRenderer.syncAircraft.bind(airportRenderer);
+    airportRenderer.syncAircraft = (...args) => {
+      if (window.__heroRenderIds) {
+        args[0] = args[0].filter(aircraft => window.__heroRenderIds.has(aircraft.id));
+      }
+      const result = syncAircraft(...args);
+      for (const entry of airportRenderer.entries.values()) {
+        entry.airborneHalo.visible = false;
+      }
+      return result;
+    };
+    const syncPaths = airportRenderer.syncPaths.bind(airportRenderer);
+    airportRenderer.syncPaths = (...args) => {
+      const result = syncPaths(...args);
+      airportRenderer.pathGroup.visible = false;
+      return result;
+    };
     const home = {
       x: viewport.cameraTarget.x,
       y: viewport.cameraTarget.y,
@@ -155,6 +178,21 @@ try {
     document.body.append(overlay);
     const context = overlay.getContext('2d');
     context.imageSmoothingEnabled = false;
+    const hideTransientLabels = () => {
+      document.querySelectorAll('body *').forEach(element => {
+        if (/^(landing|departure)$/i.test(element.textContent?.trim() || '')) {
+          element.style.visibility = 'hidden';
+        }
+      });
+      document.querySelectorAll('.landing-assist').forEach(element => {
+        element.style.visibility = 'hidden';
+      });
+    };
+    hideTransientLabels();
+    new MutationObserver(hideTransientLabels).observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
     const smooth = value => {
       const t = Math.max(0, Math.min(1, value));
       return t * t * (3 - 2 * t);
@@ -249,9 +287,21 @@ try {
         home.x + (midpoint.x - home.x) * focusAmount,
         home.y + (midpoint.y - home.y) * focusAmount,
       );
-      viewport.camera.zoom = home.zoom + (2.35 - home.zoom) * focusAmount;
+      viewport.camera.zoom = home.zoom + (2.6 - home.zoom) * focusAmount;
       viewport.applyCamera();
       viewport.camera.updateProjectionMatrix();
+      const focusOnly = time >= .8 && time < 6.5 && first && second;
+      window.__heroRenderIds = focusOnly ? new Set([first.id, second.id]) : null;
+      airportRenderer.syncAircraft(
+        focusOnly ? [first, second] : game.aircraft,
+        null,
+        new Set(),
+        true,
+      );
+      airportRenderer.pathGroup.visible = false;
+      for (const entry of airportRenderer.entries.values()) {
+        entry.airborneHalo.visible = false;
+      }
       viewport.render();
       context.clearRect(0, 0, innerWidth, innerHeight);
 
@@ -317,8 +367,10 @@ try {
       }
     };
     window.__captureAircraft = game.aircraft;
+    window.__captureWarnings = game.spawnWarnings;
     game.aircraft = game.aircraft.filter(aircraft =>
       aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
+    game.spawnWarnings = [];
     return { start: game.elapsed, focus };
   });
   const capturedFrames = Math.round(captureSeconds * outputFps);
@@ -330,10 +382,13 @@ try {
     await page.evaluate(count => {
       const game = window.__game;
       game.aircraft = window.__captureAircraft;
+      game.spawnWarnings = window.__captureWarnings;
       for (let step = 0; step < count; step++) window.__game.step(1 / 60);
       window.__captureAircraft = game.aircraft;
+      window.__captureWarnings = game.spawnWarnings;
       game.aircraft = game.aircraft.filter(aircraft =>
         aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
+      game.spawnWarnings = [];
     }, steps);
     await page.waitForTimeout(16);
     await page.evaluate(time => window.__renderHero(time), (index + 1) / outputFps);
@@ -344,6 +399,7 @@ try {
 
   const finalState = await page.evaluate(() => {
     window.__game.aircraft = window.__captureAircraft;
+    window.__game.spawnWarnings = window.__captureWarnings;
     return { ...window.__apStatus(), heroAudit: window.__heroAudit };
   });
   if (finalState.phase !== 'playing') throw new Error(`Game over at ${finalState.elapsed.toFixed(1)} seconds.`);

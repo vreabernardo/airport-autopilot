@@ -397,12 +397,14 @@ stop-runner.sh           clean shutdown
 
 The hero is a production-engine run with full game scenery, a live performance
 panel, capture-only camera work, and explicit fixed-step advancement. The full
-aircraft array is restored for every 60 Hz simulation step; only inactive
-accumulated ground aircraft are hidden while rendering each frame. The explainers
-use the same client as a deterministic test renderer. Production aircraft and
-runway assets stay active on a deliberately simplified dark field; live spawning
-is paused; and the actual controller is instrumented during capture. Capture
-fails if a native aircraft mesh stops
+aircraft and warning arrays are restored for every 60 Hz simulation step. During
+the intervention, rendering isolates the focus pair and suppresses the game's
+redundant path, halo, warning-marker, and transient-result layers; the native
+aircraft, runways, scenery, and performance panel remain untouched. The
+explainers use the same client as a deterministic test renderer. Production
+aircraft and runway assets stay active on a deliberately simplified dark field;
+live spawning is paused; and the actual controller is instrumented during
+capture. Capture fails if a native aircraft mesh stops
 matching its scenario position, an approach reference leaves its game-rendered
 runway threshold, an aircraft is paired with the wrong runway, a decision replay
 uses a different velocity field, a completed coordination field violates its
