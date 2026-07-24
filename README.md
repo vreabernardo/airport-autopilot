@@ -2,21 +2,23 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![The controller resolves the first live two-aircraft conflict](docs/early-conflict-cinematic.gif)
+![Two strategically placed aircraft demonstrate one coordinated intervention](docs/strategic-conflict-cinematic.gif)
 
-The controller above has reached the first qualifying live conflict, 1 minute
-40 seconds after launch, with two aircraft airborne. The next 24 seconds run at
-true 1× speed—not a timelapse. The camera follows the blue and yellow pair whose
-direct runway headings overlap by 4.42 world units, shows the coordinated
-velocities that preserve 6.93 units of clearance, and returns to the full field
-as normal traffic continues. The game's full scenery and open performance panel
-remain visible. Every controller decision runs against the complete simulation
-state at 60 Hz.
+The hero is a deterministic production-engine demonstration rather than a
+selected random spawn. Two native aircraft are deliberately placed so their
+direct runway headings reach the same world-space point six seconds later. Those independent
+headings physically overlap; the production controller instead assigns a shared
+velocity field that preserves 5.59 world units of edge clearance. The ten-second
+sequence runs at true 1× speed—not a timelapse—while the camera moves from the
+full airport into the intervention and back out again. The game's scenery,
+aircraft meshes, runways, and open performance panel remain visible, and every
+controller decision still executes against the simulator at 60 Hz.
 
-The panel is a cumulative, single-seed game score and is not the benchmark below.
-The benchmark uses five seeds and discards each run's first five minutes. The
-hero is a cinematic inspection of the first readable live intervention; the
-shorter animations below isolate individual controller stages.
+The staged capture pauses spawning and is explanatory evidence, not benchmark
+evidence. The panel retains the cumulative score from the seeded warm-up used to
+load the native aircraft assets. The benchmark below instead uses five seeds and
+discards each run's first five minutes. The shorter animations isolate individual
+controller stages.
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
@@ -385,7 +387,7 @@ as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 ```text
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
-capture-hero.mjs         first live conflict + 24-second fixed-step cinematic
+capture-hero.mjs         strategic two-aircraft + 10-second fixed-step cinematic
 capture-explainers.mjs   five controller-recorded technical animations
 evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
 evaluation/fixed/        pinned production model/map modules
@@ -396,12 +398,13 @@ stop-runner.sh           clean shutdown
 ```
 
 The hero is a production-engine run with full game scenery, a live performance
-panel, capture-only camera work, and explicit fixed-step advancement. The full
-aircraft and warning arrays are restored for every 60 Hz simulation step. During
-the intervention, rendering isolates the focus pair and suppresses the game's
+panel, capture-only camera work, and explicit fixed-step advancement. After a
+seeded warm-up, capture replaces the random traffic with a blue/yellow pair at
+audited strategic positions and pauses spawning. The production controller then
+advances that exact scene at 60 Hz. Rendering suppresses only the game's
 redundant path, halo, warning-marker, and transient-result layers; the native
-aircraft, runways, scenery, and performance panel remain untouched. The
-explainers use the same client as a deterministic test renderer. Production
+aircraft, runways, scenery, and performance panel remain active. The explainers
+use the same client as a deterministic test renderer. Production
 aircraft and runway assets stay active on a deliberately simplified dark field;
 live spawning is paused; and the actual controller is instrumented during
 capture. Capture fails if a native aircraft mesh stops
@@ -446,11 +449,11 @@ npm start
 The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
-npm run capture:hero       # find the first live conflict, record the next 24 s
+npm run capture:hero       # stage one deliberate conflict, record the next 10 s
 npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
-Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=24`, and
+Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=10`, and
 `HERO_FPS=12`. The simulator and controller still execute every 1/60-second tick;
 each rendered frame advances exactly five simulation ticks. Wall-clock browser
 throttling therefore cannot stretch the displayed timeline. All four settings

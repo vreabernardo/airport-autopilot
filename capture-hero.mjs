@@ -12,9 +12,9 @@ const projectDir = process.env.PROJECT_DIR || path.dirname(fileURLToPath(import.
 const outputDir = process.env.HERO_OUTPUT_DIR || path.join(projectDir, 'docs');
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS ?? 0) * 60 * 60;
-const captureSeconds = Number(process.env.CAPTURE_SECONDS || 24);
+const captureSeconds = Number(process.env.CAPTURE_SECONDS || 10);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'early-conflict-cinematic.gif';
+const outputName = process.env.HERO_OUTPUT || 'strategic-conflict-cinematic.gif';
 const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 12));
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
@@ -102,49 +102,81 @@ try {
           - a.spec.radius - b.spec.radius,
       };
     };
-    const selectFocus = () => {
-      const flying = game.aircraft.filter(aircraft => aircraft.state === 'flying');
-      let best = null;
-      for (let aIndex = 0; aIndex < flying.length; aIndex++) {
-        for (let bIndex = aIndex + 1; bIndex < flying.length; bIndex++) {
-          const a = flying[aIndex];
-          const b = flying[bIndex];
-          const aRunway = runwayFor(a.kind);
-          const bRunway = runwayFor(b.kind);
-          if (!aRunway || !bRunway) continue;
-          const aDirect = velocityTo(a, aRunway.approach);
-          const bDirect = velocityTo(b, bRunway.approach);
-          const direct = pairClearance(a, aDirect, b, bDirect);
-          const actual = pairClearance(a, currentVelocity(a), b, currentVelocity(b));
-          const runwayDistance = Math.min(
-            Math.hypot(a.pos.x - aRunway.approach.x, a.pos.y - aRunway.approach.y),
-            Math.hypot(b.pos.x - bRunway.approach.x, b.pos.y - bRunway.approach.y),
-          );
-          if (direct.clearance >= 2 || actual.clearance < 2 || runwayDistance < 50) continue;
-          const score = (2 - direct.clearance) + Math.min(8, actual.clearance - 2) + runwayDistance / 80;
-          if (!best || score > best.score) {
-            best = {
-              ids: [a.id, b.id],
-              score,
-              elapsed: game.elapsed,
-              airborneCount: flying.length,
-              runwayDistance,
-              directClearance: direct.clearance,
-              actualClearance: actual.clearance,
-            };
-          }
+    const samples = {};
+    for (let tick = 0; tick < 60 * 3 * 60 && (!samples.blue || !samples.yellow); tick++) {
+      for (const aircraft of game.aircraft) {
+        if (aircraft.state === 'flying' && (aircraft.kind === 'blue' || aircraft.kind === 'yellow')) {
+          samples[aircraft.kind] ||= {
+            ...aircraft,
+            pos: { ...aircraft.pos },
+            path: [],
+            target: null,
+          };
         }
       }
-      return best;
-    };
-    let focus = selectFocus();
-    for (let tick = 0; tick < 60 * 6 * 60 && !focus; tick++) {
       game.step(1 / 60);
-      focus = selectFocus();
     }
-    if (!focus) {
-      throw new Error('Could not find an early direct-conflict pair resolved by the controller.');
+    if (!samples.blue || !samples.yellow) {
+      throw new Error('Could not load native blue and yellow aircraft assets.');
     }
+    while (game.elapsed < 100) game.step(1 / 60);
+    const conflictPoint = { x: 0, y: 0 };
+    const conflictSeconds = 6;
+    const strategicPosition = sample => {
+      const runway = runwayFor(sample.kind);
+      const dx = conflictPoint.x - runway.approach.x;
+      const dy = conflictPoint.y - runway.approach.y;
+      const length = Math.hypot(dx, dy);
+      return {
+        x: conflictPoint.x + dx / length * sample.spec.speed * conflictSeconds,
+        y: conflictPoint.y + dy / length * sample.spec.speed * conflictSeconds,
+      };
+    };
+    const stageAircraft = (sample, id, age) => {
+      const pos = strategicPosition(sample);
+      const runway = runwayFor(sample.kind);
+      return {
+        ...sample,
+        id,
+        pos,
+        heading: Math.atan2(runway.approach.y - pos.y, runway.approach.x - pos.x),
+        path: [{ ...runway.approach }],
+        target: null,
+        state: 'flying',
+        age,
+        landProgress: 0,
+        takeoffProgress: 0,
+      };
+    };
+    const blue = stageAircraft(samples.blue, 9801, 2);
+    const yellow = stageAircraft(samples.yellow, 9802, 1);
+    game.spawningEnabled = false;
+    game.spawnWarnings.splice(0, game.spawnWarnings.length);
+    game.aircraft.splice(0, game.aircraft.length, blue, yellow);
+    game.drawing = null;
+    game.hoveredId = null;
+    game.hoveredRunwayId = null;
+    window.__airportControlDirect(game);
+    const blueDirect = velocityTo(blue, runwayFor('blue').approach);
+    const yellowDirect = velocityTo(yellow, runwayFor('yellow').approach);
+    const direct = pairClearance(blue, blueDirect, yellow, yellowDirect);
+    const actual = pairClearance(blue, currentVelocity(blue), yellow, currentVelocity(yellow));
+    if (direct.clearance >= 0 || actual.clearance < 2) {
+      throw new Error(`Strategic scene failed solver audit: direct=${direct.clearance}, actual=${actual.clearance}.`);
+    }
+    const focus = {
+      ids: [blue.id, yellow.id],
+      staged: true,
+      conflictPoint,
+      conflictSeconds,
+      airborneCount: 2,
+      directClearance: direct.clearance,
+      actualClearance: actual.clearance,
+      positions: {
+        blue: { ...blue.pos },
+        yellow: { ...yellow.pos },
+      },
+    };
 
     game.update = () => {};
     const viewport = window.__airportViewport;
@@ -180,7 +212,7 @@ try {
     context.imageSmoothingEnabled = false;
     const hideTransientLabels = () => {
       document.querySelectorAll('body *').forEach(element => {
-        if (/^(landing|departure)$/i.test(element.textContent?.trim() || '')) {
+        if (/^(landing|departure|drag this plane)$/i.test(element.textContent?.trim() || '')) {
           element.style.visibility = 'hidden';
         }
       });
@@ -311,8 +343,8 @@ try {
       context.lineWidth = 2;
       context.strokeRect(760, 18, 414, 82);
       label('AUTONOMOUS AIRSPACE · 60 HZ', 780, 47, '#f5edcf', 'left', 15);
-      let phase = 'FIRST LIVE CONFLICT · FOCUS PAIR';
-      if (time >= .8 && time < 1.4) phase = 'LOCKING A LIVE CONFLICT';
+      let phase = 'TWO AIRCRAFT · ONE CONFLICT POINT';
+      if (time >= .8 && time < 1.4) phase = 'PROJECTING DIRECT ROUTES';
       else if (time >= 1.4 && time < 2.9) phase = 'DIRECT ROUTES INTERSECT';
       else if (time >= 2.9 && time < 4.6) phase = 'COORDINATED VELOCITIES';
       else if (time >= 4.6 && time < 6.5) phase = 'CONFLICT CLEARED';

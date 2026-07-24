@@ -1,25 +1,38 @@
 {
   "seed": 101,
-  "capturedFrames": 288,
+  "capturedFrames": 120,
   "focus": {
     "ids": [
-      22,
-      23
+      9801,
+      9802
     ],
-    "score": 12.540443598569242,
-    "elapsed": 100.41666666666225,
+    "staged": true,
+    "conflictPoint": {
+      "x": 0,
+      "y": 0
+    },
+    "conflictSeconds": 6,
     "airborneCount": 2,
-    "runwayDistance": 95.4892857725467,
-    "directClearance": -4.418565300686037,
-    "actualClearance": 6.928262225726371
+    "directClearance": -4.999999999999984,
+    "actualClearance": 5.592993899796388,
+    "positions": {
+      "blue": {
+        "x": -23.132099989063484,
+        "y": 42.05836361647906
+      },
+      "yellow": {
+        "x": 34.73091308692018,
+        "y": -23.617020899105725
+      }
+    }
   },
   "ok": true,
   "phase": "playing",
-  "elapsed": 124.41666666666089,
-  "landings": 27,
-  "departures": 6,
+  "elapsed": 110.0166666666617,
+  "landings": 21,
+  "departures": 1,
   "airborne": 2,
-  "total": 24,
+  "total": 2,
   "warnings": 0,
   "bounds": {
     "minX": -39.87250908482147,
@@ -46,7 +59,7 @@
     ]
   },
   "stats": {
-    "frames": 7465,
+    "frames": 6602,
     "shieldInterventions": 0
   },
   "stop": false,
@@ -54,7 +67,7 @@
     "directFrames": 18,
     "coordinatedFrames": 21,
     "missingFocusFrames": 0,
-    "returnedHomeFrames": 211,
+    "returnedHomeFrames": 43,
     "fullSceneryVisible": true,
     "performancePanelVisible": true
   }
