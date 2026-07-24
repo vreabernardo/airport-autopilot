@@ -2,7 +2,7 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Blue, yellow, and red aircraft leave a racetrack hold and land](docs/holding-pattern-cinematic.gif)
+![Blue, yellow, and red aircraft leave a racetrack hold and land](docs/holding-pattern-cinematic.gif?v=multicolor)
 
 The hero is a deterministic game-engine visualization rather than a selected
 random spawn. Six native aircraft—two blue, two yellow, and two red—enter one
