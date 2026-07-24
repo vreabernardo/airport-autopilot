@@ -2,17 +2,18 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Two strategically placed aircraft demonstrate one coordinated intervention](docs/strategic-conflict-cinematic.gif)
+![Six strategically placed aircraft demonstrate coordinated control](docs/strategic-conflict-cinematic.gif)
 
 The hero is a deterministic production-engine demonstration rather than a
-selected random spawn. Two native aircraft are deliberately placed so their
-direct runway headings reach the same world-space point only 4.5 seconds later.
-Those independent headings overlap by 5.0 world units. The production controller
-breaks the symmetry: its initial constant-velocity projection clears by 2.94
-units, and the recorded closest pass never falls below 2.00 units of edge
-separation. The ten-second sequence runs at true 1× speed—not a timelapse—while
-the camera moves from the full airport into the near miss and back out again. The
-game's scenery, aircraft meshes, runways, and open performance panel remain
+selected random spawn. Six native aircraft—two of each runway color—are placed
+in two tightly spaced waves whose direct runway headings converge 4.5 and 5.5
+seconds later. Independent control creates ten pairwise physical overlaps. The
+production controller breaks both waves apart as one shared velocity field: its
+minimum initial constant-velocity projection clears by 2.02 world units, and
+the recorded closest pass never falls below 2.00 units of edge separation. The
+ten-second sequence runs at true 1× speed—not a timelapse—while the camera moves
+from the full airport into the six-aircraft convergence and back out again. The
+game's scenery, native meshes, runways, and open performance panel remain
 visible, and every controller decision still executes at 60 Hz.
 
 The staged capture pauses spawning and is explanatory evidence, not benchmark
@@ -388,7 +389,7 @@ as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 ```text
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
-capture-hero.mjs         strategic two-aircraft + 10-second fixed-step cinematic
+capture-hero.mjs         strategic six-aircraft + 10-second fixed-step cinematic
 capture-explainers.mjs   five controller-recorded technical animations
 evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
 evaluation/fixed/        pinned production model/map modules
@@ -400,9 +401,9 @@ stop-runner.sh           clean shutdown
 
 The hero is a production-engine run with full game scenery, a live performance
 panel, capture-only camera work, and explicit fixed-step advancement. After a
-seeded warm-up, capture replaces the random traffic with a blue/yellow pair at
-audited strategic positions and pauses spawning. The production controller then
-advances that exact scene at 60 Hz. Rendering suppresses only the game's
+seeded warm-up, capture replaces the random traffic with two three-color waves
+at audited strategic positions and pauses spawning. The production controller
+then advances that exact scene at 60 Hz. Rendering suppresses only the game's
 redundant path, halo, warning-marker, and transient-result layers; the native
 aircraft, runways, scenery, and performance panel remain active. The explainers
 use the same client as a deterministic test renderer. Production

@@ -4,7 +4,16 @@
   "focus": {
     "ids": [
       9801,
-      9802
+      9802,
+      9803,
+      9804,
+      9805,
+      9806
+    ],
+    "primaryIds": [
+      9801,
+      9802,
+      9803
     ],
     "staged": true,
     "conflictPoint": {
@@ -12,27 +21,142 @@
       "y": 0
     },
     "conflictSeconds": 4.5,
-    "airborneCount": 2,
-    "directClearance": -4.999999999999993,
-    "actualClearance": 2.9447454248472806,
-    "positions": {
-      "blue": {
-        "x": -17.34907499179761,
-        "y": 31.543772712359296
+    "waveSeconds": [
+      4.5,
+      5.5
+    ],
+    "airborneCount": 6,
+    "directConflicts": [
+      {
+        "ids": [
+          9801,
+          9802
+        ],
+        "clearance": -4.999999999999993
       },
-      "yellow": {
-        "x": 26.048184815190133,
-        "y": -17.712765674329294
+      {
+        "ids": [
+          9801,
+          9803
+        ],
+        "clearance": -5.4
+      },
+      {
+        "ids": [
+          9801,
+          9805
+        ],
+        "clearance": -3.2588426178124985
+      },
+      {
+        "ids": [
+          9802,
+          9803
+        ],
+        "clearance": -5.199999999999999
+      },
+      {
+        "ids": [
+          9802,
+          9804
+        ],
+        "clearance": -3.2588426178125074
+      },
+      {
+        "ids": [
+          9802,
+          9806
+        ],
+        "clearance": -4.560555284559571
+      },
+      {
+        "ids": [
+          9803,
+          9805
+        ],
+        "clearance": -4.560555284559556
+      },
+      {
+        "ids": [
+          9804,
+          9805
+        ],
+        "clearance": -4.999999999999989
+      },
+      {
+        "ids": [
+          9804,
+          9806
+        ],
+        "clearance": -5.399999999999995
+      },
+      {
+        "ids": [
+          9805,
+          9806
+        ],
+        "clearance": -5.199999999999983
       }
-    }
+    ],
+    "actualClearance": 2.017917817515898,
+    "positions": [
+      {
+        "id": 9801,
+        "kind": "blue",
+        "pos": {
+          "x": -17.34907499179761,
+          "y": 31.543772712359296
+        }
+      },
+      {
+        "id": 9802,
+        "kind": "yellow",
+        "pos": {
+          "x": 26.048184815190133,
+          "y": -17.712765674329294
+        }
+      },
+      {
+        "id": 9803,
+        "kind": "red",
+        "pos": {
+          "x": -29.36247706057376,
+          "y": 27.89435320754507
+        }
+      },
+      {
+        "id": 9804,
+        "kind": "blue",
+        "pos": {
+          "x": -21.204424989974857,
+          "y": 38.553499981772475
+        }
+      },
+      {
+        "id": 9805,
+        "kind": "yellow",
+        "pos": {
+          "x": 31.83667032967683,
+          "y": -21.648935824180246
+        }
+      },
+      {
+        "id": 9806,
+        "kind": "red",
+        "pos": {
+          "x": -35.887471962923485,
+          "y": 34.093098364777305
+        }
+      }
+    ]
   },
   "ok": true,
   "phase": "playing",
   "elapsed": 110.0166666666617,
   "landings": 21,
   "departures": 1,
-  "airborne": 2,
-  "total": 2,
+  "airborne": 6,
+  "total": 6,
   "warnings": 0,
   "bounds": {
     "minX": -39.87250908482147,
@@ -68,7 +192,11 @@
     "coordinatedFrames": 33,
     "missingFocusFrames": 0,
     "returnedHomeFrames": 34,
-    "minPhysicalClearance": 2.0048768061339826,
+    "minPhysicalClearance": 2.0000215485371706,
+    "minPhysicalPair": [
+      9804,
+      9806
+    ],
     "fullSceneryVisible": true,
     "performancePanelVisible": true
   }

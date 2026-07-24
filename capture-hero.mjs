@@ -104,9 +104,11 @@ try {
       };
     };
     const samples = {};
-    for (let tick = 0; tick < 60 * 3 * 60 && (!samples.blue || !samples.yellow); tick++) {
+    for (let tick = 0; tick < 60 * 3 * 60
+        && (!samples.blue || !samples.yellow || !samples.red); tick++) {
       for (const aircraft of game.aircraft) {
-        if (aircraft.state === 'flying' && (aircraft.kind === 'blue' || aircraft.kind === 'yellow')) {
+        if (aircraft.state === 'flying'
+            && (aircraft.kind === 'blue' || aircraft.kind === 'yellow' || aircraft.kind === 'red')) {
           samples[aircraft.kind] ||= {
             ...aircraft,
             pos: { ...aircraft.pos },
@@ -117,23 +119,23 @@ try {
       }
       game.step(1 / 60);
     }
-    if (!samples.blue || !samples.yellow) {
-      throw new Error('Could not load native blue and yellow aircraft assets.');
+    if (!samples.blue || !samples.yellow || !samples.red) {
+      throw new Error('Could not load native blue, yellow, and red aircraft assets.');
     }
     while (game.elapsed < 100) game.step(1 / 60);
     const conflictPoint = { x: 0, y: 0 };
-    const strategicPosition = sample => {
+    const strategicPosition = (sample, seconds) => {
       const runway = runwayFor(sample.kind);
       const dx = conflictPoint.x - runway.approach.x;
       const dy = conflictPoint.y - runway.approach.y;
       const length = Math.hypot(dx, dy);
       return {
-        x: conflictPoint.x + dx / length * sample.spec.speed * conflictSeconds,
-        y: conflictPoint.y + dy / length * sample.spec.speed * conflictSeconds,
+        x: conflictPoint.x + dx / length * sample.spec.speed * seconds,
+        y: conflictPoint.y + dy / length * sample.spec.speed * seconds,
       };
     };
-    const stageAircraft = (sample, id, age) => {
-      const pos = strategicPosition(sample);
+    const stageAircraft = (sample, id, age, seconds) => {
+      const pos = strategicPosition(sample, seconds);
       const runway = runwayFor(sample.kind);
       return {
         ...sample,
@@ -148,34 +150,54 @@ try {
         takeoffProgress: 0,
       };
     };
-    const blue = stageAircraft(samples.blue, 9801, 2);
-    const yellow = stageAircraft(samples.yellow, 9802, 1);
+    const waveSeconds = [conflictSeconds, conflictSeconds + 1];
+    const staged = waveSeconds.flatMap((seconds, waveIndex) =>
+      ['blue', 'yellow', 'red'].map((kind, kindIndex) =>
+        stageAircraft(samples[kind], 9801 + waveIndex * 3 + kindIndex,
+          6 - waveIndex * 3 - kindIndex, seconds)));
     game.spawningEnabled = false;
     game.spawnWarnings.splice(0, game.spawnWarnings.length);
-    game.aircraft.splice(0, game.aircraft.length, blue, yellow);
+    game.aircraft.splice(0, game.aircraft.length, ...staged);
     game.drawing = null;
     game.hoveredId = null;
     game.hoveredRunwayId = null;
     window.__airportControlDirect(game);
-    const blueDirect = velocityTo(blue, runwayFor('blue').approach);
-    const yellowDirect = velocityTo(yellow, runwayFor('yellow').approach);
-    const direct = pairClearance(blue, blueDirect, yellow, yellowDirect);
-    const actual = pairClearance(blue, currentVelocity(blue), yellow, currentVelocity(yellow));
-    if (direct.clearance >= 0 || actual.clearance < 2) {
-      throw new Error(`Strategic scene failed solver audit: direct=${direct.clearance}, actual=${actual.clearance}.`);
+    const directConflicts = [];
+    let actualClearance = Number.POSITIVE_INFINITY;
+    for (let firstIndex = 0; firstIndex < staged.length; firstIndex++) {
+      for (let secondIndex = firstIndex + 1; secondIndex < staged.length; secondIndex++) {
+        const first = staged[firstIndex];
+        const second = staged[secondIndex];
+        const direct = pairClearance(
+          first, velocityTo(first, runwayFor(first.kind).approach),
+          second, velocityTo(second, runwayFor(second.kind).approach),
+        );
+        if (direct.clearance < 0) {
+          directConflicts.push({ ids: [first.id, second.id], clearance: direct.clearance });
+        }
+        actualClearance = Math.min(actualClearance, pairClearance(
+          first, currentVelocity(first), second, currentVelocity(second),
+        ).clearance);
+      }
+    }
+    if (directConflicts.length < 6 || actualClearance < 2) {
+      throw new Error(`Strategic scene failed solver audit: direct conflicts=${directConflicts.length}, actual=${actualClearance}.`);
     }
     const focus = {
-      ids: [blue.id, yellow.id],
+      ids: staged.map(aircraft => aircraft.id),
+      primaryIds: staged.slice(0, 3).map(aircraft => aircraft.id),
       staged: true,
       conflictPoint,
       conflictSeconds,
-      airborneCount: 2,
-      directClearance: direct.clearance,
-      actualClearance: actual.clearance,
-      positions: {
-        blue: { ...blue.pos },
-        yellow: { ...yellow.pos },
-      },
+      waveSeconds,
+      airborneCount: staged.length,
+      directConflicts,
+      actualClearance,
+      positions: staged.map(aircraft => ({
+        id: aircraft.id,
+        kind: aircraft.kind,
+        pos: { ...aircraft.pos },
+      })),
     };
 
     game.update = () => {};
@@ -284,6 +306,7 @@ try {
       missingFocusFrames: 0,
       returnedHomeFrames: 0,
       minPhysicalClearance: Number.POSITIVE_INFINITY,
+      minPhysicalPair: null,
       fullSceneryVisible: Boolean(sceneryLayer?.visible),
       performancePanelVisible: panelLabels.every(text =>
         [...document.querySelectorAll('body *')].some(element =>
@@ -292,15 +315,18 @@ try {
           && getComputedStyle(element).display !== 'none')),
     };
     window.__renderHero = time => {
-      const [firstId, secondId] = focus.ids;
-      const first = game.aircraft.find(aircraft => aircraft.id === firstId);
-      const second = game.aircraft.find(aircraft => aircraft.id === secondId);
+      const aircraft = focus.ids
+        .map(id => game.aircraft.find(candidate => candidate.id === id))
+        .filter(Boolean);
+      const primary = focus.primaryIds
+        .map(id => game.aircraft.find(candidate => candidate.id === id))
+        .filter(Boolean);
       let focusAmount = 0;
       if (time >= .4 && time < 1) focusAmount = smooth((time - .4) / .6);
       else if (time >= 1 && time < 5.4) focusAmount = 1;
       else if (time >= 5.4 && time < 7.2) focusAmount = 1 - smooth((time - 5.4) / 1.8);
       if (time >= 1 && time < 5.4) {
-        if (first && second) {
+        if (aircraft.length === focus.ids.length) {
           if (time < 2.6) window.__heroAudit.directFrames++;
           else window.__heroAudit.coordinatedFrames++;
         } else {
@@ -308,10 +334,10 @@ try {
         }
       }
       if (time >= 7.2 && focusAmount < 1e-6) window.__heroAudit.returnedHomeFrames++;
-      if (first && second) {
+      if (aircraft.length) {
         window.__heroLastFocus = {
-          x: (first.pos.x + second.pos.x) / 2,
-          y: (first.pos.y + second.pos.y) / 2,
+          x: aircraft.reduce((sum, item) => sum + item.pos.x, 0) / aircraft.length,
+          y: aircraft.reduce((sum, item) => sum + item.pos.y, 0) / aircraft.length,
         };
       }
       const midpoint = window.__heroLastFocus || home;
@@ -320,13 +346,13 @@ try {
         home.x + (midpoint.x - home.x) * focusAmount,
         home.y + (midpoint.y - home.y) * focusAmount,
       );
-      viewport.camera.zoom = home.zoom + (3.1 - home.zoom) * focusAmount;
+      viewport.camera.zoom = home.zoom + (2.55 - home.zoom) * focusAmount;
       viewport.applyCamera();
       viewport.camera.updateProjectionMatrix();
-      const focusOnly = time >= .4 && time < 7.2 && first && second;
-      window.__heroRenderIds = focusOnly ? new Set([first.id, second.id]) : null;
+      const focusOnly = time >= .4 && time < 7.2 && aircraft.length;
+      window.__heroRenderIds = focusOnly ? new Set(aircraft.map(item => item.id)) : null;
       airportRenderer.syncAircraft(
-        focusOnly ? [first, second] : game.aircraft,
+        focusOnly ? aircraft : game.aircraft,
         null,
         new Set(),
         true,
@@ -344,7 +370,7 @@ try {
       context.lineWidth = 2;
       context.strokeRect(760, 18, 414, 82);
       label('AUTONOMOUS AIRSPACE · 60 HZ', 780, 47, '#f5edcf', 'left', 15);
-      let phase = 'TWO AIRCRAFT · COLLISION COURSE';
+      let phase = 'SIX AIRCRAFT · TWO IMPACT WAVES';
       if (time >= .4 && time < 1) phase = 'CLOSING ON THE CONFLICT';
       else if (time >= 1 && time < 2.6) phase = 'DIRECT HEADINGS · CERTAIN IMPACT';
       else if (time >= 2.6 && time < 4.7) phase = 'CONTROLLER BREAKS SYMMETRY';
@@ -352,19 +378,31 @@ try {
       else if (time >= 7.2) phase = 'AIRSPACE SECURE';
       label(phase, 780, 79, '#43d7e5', 'left', 22);
 
-      if (!first || !second || time < .4 || time >= 5.6) return;
-      const firstPoint = viewport.worldToScreen(first.pos);
-      const secondPoint = viewport.worldToScreen(second.pos);
-      reticle(firstPoint, '#43d7e5', time);
-      reticle(secondPoint, '#f5edcf', time + .2);
+      if (primary.length !== 3 || aircraft.length !== focus.ids.length
+          || time < .4 || time >= 5.6) return;
+      const colorFor = item => ({
+        blue: '#43d7e5',
+        yellow: '#ffd21c',
+        red: '#ff6174',
+      })[item.kind] || '#f5edcf';
+      for (const [index, item] of aircraft.entries()) {
+        reticle(viewport.worldToScreen(item.pos), colorFor(item), time + index * .13, 24);
+      }
       if (time < 2.6) {
-        const firstRunway = runwayFor(first.kind);
-        const secondRunway = runwayFor(second.kind);
-        const firstVelocity = velocityTo(first, firstRunway.approach);
-        const secondVelocity = velocityTo(second, secondRunway.approach);
-        const prediction = predictedPair(first, firstVelocity, second, secondVelocity);
-        arrow(firstPoint, viewport.worldToScreen(prediction.a), '#43d7e5', 6, [10, 6]);
-        arrow(secondPoint, viewport.worldToScreen(prediction.b), '#ffd21c', 6, [10, 6]);
+        const velocities = primary.map(item =>
+          velocityTo(item, runwayFor(item.kind).approach));
+        const prediction = predictedPair(primary[0], velocities[0], primary[1], velocities[1]);
+        for (let index = 0; index < primary.length; index++) {
+          const item = primary[index];
+          arrow(
+            viewport.worldToScreen(item.pos),
+            viewport.worldToScreen({
+              x: item.pos.x + velocities[index].x * prediction.time,
+              y: item.pos.y + velocities[index].y * prediction.time,
+            }),
+            colorFor(item), 6, [10, 6],
+          );
+        }
         const collision = viewport.worldToScreen({
           x: (prediction.a.x + prediction.b.x) / 2,
           y: (prediction.a.y + prediction.b.y) / 2,
@@ -382,24 +420,29 @@ try {
         label(`IMPACT IN ${prediction.time.toFixed(1)} S`,
           collision.x, collision.y - 42, '#ff4f91', 'center', 18);
       } else {
-        for (const [aircraft, color] of [[first, '#43d7e5'], [second, '#f5edcf']]) {
-          const velocity = currentVelocity(aircraft);
+        for (const item of aircraft) {
+          const velocity = currentVelocity(item);
           arrow(
-            viewport.worldToScreen(aircraft.pos),
+            viewport.worldToScreen(item.pos),
             viewport.worldToScreen({
-              x: aircraft.pos.x + velocity.x * 2.5,
-              y: aircraft.pos.y + velocity.y * 2.5,
+              x: item.pos.x + velocity.x * 2.2,
+              y: item.pos.y + velocity.y * 2.2,
             }),
-            color,
-            6,
+            colorFor(item), 5,
           );
         }
-        const separation = predictedPair(
-          first, currentVelocity(first), second, currentVelocity(second),
-        ).clearance;
+        let separation = Number.POSITIVE_INFINITY;
+        for (let firstIndex = 0; firstIndex < aircraft.length; firstIndex++) {
+          for (let secondIndex = firstIndex + 1; secondIndex < aircraft.length; secondIndex++) {
+            separation = Math.min(separation, predictedPair(
+              aircraft[firstIndex], currentVelocity(aircraft[firstIndex]),
+              aircraft[secondIndex], currentVelocity(aircraft[secondIndex]),
+            ).clearance);
+          }
+        }
+        const top = Math.min(...aircraft.map(item => viewport.worldToScreen(item.pos).y));
         label(`EDGE CLEARANCE ${Math.max(0, separation).toFixed(1)}`,
-          (firstPoint.x + secondPoint.x) / 2,
-          Math.min(firstPoint.y, secondPoint.y) - 64, '#43d7e5', 'center', 16);
+          innerWidth / 2, top - 56, '#43d7e5', 'center', 16);
       }
     };
     window.__heroFocusIds = [...focus.ids];
@@ -422,18 +465,22 @@ try {
       game.spawnWarnings = window.__captureWarnings;
       for (let step = 0; step < count; step++) {
         window.__game.step(1 / 60);
-        const [firstId, secondId] = window.__heroFocusIds;
-        const first = game.aircraft.find(aircraft => aircraft.id === firstId);
-        const second = game.aircraft.find(aircraft => aircraft.id === secondId);
-        if (first && second) {
-          const clearance = Math.hypot(
-            second.pos.x - first.pos.x,
-            second.pos.y - first.pos.y,
-          ) - first.spec.radius - second.spec.radius;
-          window.__heroAudit.minPhysicalClearance = Math.min(
-            window.__heroAudit.minPhysicalClearance,
-            clearance,
-          );
+        const focus = window.__heroFocusIds
+          .map(id => game.aircraft.find(aircraft => aircraft.id === id))
+          .filter(Boolean);
+        for (let firstIndex = 0; firstIndex < focus.length; firstIndex++) {
+          for (let secondIndex = firstIndex + 1; secondIndex < focus.length; secondIndex++) {
+            const first = focus[firstIndex];
+            const second = focus[secondIndex];
+            const clearance = Math.hypot(
+              second.pos.x - first.pos.x,
+              second.pos.y - first.pos.y,
+            ) - first.spec.radius - second.spec.radius;
+            if (clearance < window.__heroAudit.minPhysicalClearance) {
+              window.__heroAudit.minPhysicalClearance = clearance;
+              window.__heroAudit.minPhysicalPair = [first.id, second.id];
+            }
+          }
         }
       }
       window.__captureAircraft = game.aircraft;
