@@ -2,25 +2,23 @@
 
 **A predictive multi-agent controller for [Airport Simulator](https://airport.apunen.com/).**
 
-![Six strategically placed aircraft demonstrate coordinated control](docs/strategic-conflict-cinematic.gif)
+![Five aircraft fly a racetrack hold and land in sequence](docs/holding-pattern-cinematic.gif)
 
-The hero is a deterministic production-engine demonstration rather than a
-selected random spawn. Six native aircraft—two of each runway color—are placed
-in two tightly spaced waves whose direct runway headings converge 4.5 and 5.5
-seconds later. Independent control creates ten pairwise physical overlaps. The
-production controller breaks both waves apart as one shared velocity field: its
-minimum initial constant-velocity projection clears by 2.02 world units, and
-the recorded closest pass never falls below 2.00 units of edge separation. The
-ten-second sequence runs at true 1× speed—not a timelapse—while the camera moves
-from the full airport into the six-aircraft convergence and back out again. The
-game's scenery, native meshes, runways, and open performance panel remain
-visible, and every controller decision still executes at 60 Hz.
+The hero is a deterministic game-engine visualization rather than a selected
+random spawn. Five native blue aircraft enter a racetrack hold parallel to their
+runway. A capture-only arrival sequencer releases one aircraft from the same
+gate every 3.1 seconds; the unmodified simulator then performs each final
+approach, touchdown, and score update. All five land in order. While holding,
+the measured speed stays between 7.987 and 8.013 world units per second, the
+largest release-gate error is 0.057 units, and airborne edge clearance never
+falls below 13.39 units.
 
-The staged capture pauses spawning and is explanatory evidence, not benchmark
-evidence. The panel retains the cumulative score from the seeded warm-up used to
-load the native aircraft assets. The benchmark below instead uses five seeds and
-discards each run's first five minutes. The shorter animations isolate individual
-controller stages.
+The eighteen-second sequence runs at true 1× speed—not a timelapse—and uses the
+game's scenery, native meshes, runway, landing state machine, and open
+performance panel. The holding sequencer is capture choreography and is not
+benchmark evidence for the production controller. The benchmark below executes
+`autopilot.js` over five seeds and discards each run's first five minutes. The
+shorter animations isolate individual production-controller stages.
 
 This document describes how the controller evolved, why the first architecture
 was discarded, the final collision model, and the evaluator used to keep
@@ -389,7 +387,7 @@ as [evaluation/autoresearch-program.md](evaluation/autoresearch-program.md).
 ```text
 autopilot.js             controller injected before each simulation step
 runner.mjs               visible production-game runner
-capture-hero.mjs         strategic six-aircraft + 10-second fixed-step cinematic
+capture-hero.mjs         five-aircraft hold + 18-second fixed-step cinematic
 capture-explainers.mjs   five controller-recorded technical animations
 evaluation/evaluate.mjs  fixed five-seed evaluator and ablations
 evaluation/fixed/        pinned production model/map modules
@@ -399,17 +397,18 @@ status-runner.sh         runner status
 stop-runner.sh           clean shutdown
 ```
 
-The hero is a production-engine run with full game scenery, a live performance
+The hero uses the production game engine with full scenery, a live performance
 panel, capture-only camera work, and explicit fixed-step advancement. After a
-seeded warm-up, capture replaces the random traffic with two three-color waves
-at audited strategic positions and pauses spawning. The production controller
-then advances that exact scene at 60 Hz. Rendering suppresses only the game's
-redundant path, halo, warning-marker, and transient-result layers; the native
-aircraft, runways, scenery, and performance panel remain active. The explainers
-use the same client as a deterministic test renderer. Production
-aircraft and runway assets stay active on a deliberately simplified dark field;
-live spawning is paused; and the actual controller is instrumented during
-capture. Capture fails if a native aircraft mesh stops
+seeded warm-up, capture replaces random traffic with five blue aircraft evenly
+spaced around an audited racetrack hold and pauses spawning. The capture
+sequencer preserves native aircraft speed, releases each arrival at one gate,
+and hands the final approach and landing to the game's state machine. Rendering
+suppresses only redundant path, halo, warning-marker, and transient-result
+layers; native aircraft, runways, scenery, and the performance panel remain
+active. The explainers use the same client as a deterministic test renderer.
+For those captures, production aircraft and runway assets stay active on a
+deliberately simplified dark field, live spawning is paused, and the actual
+controller is instrumented. Capture fails if a native aircraft mesh stops
 matching its scenario position, an approach reference leaves its game-rendered
 runway threshold, an aircraft is paired with the wrong runway, a decision replay
 uses a different velocity field, a completed coordination field violates its
@@ -451,16 +450,15 @@ npm start
 The capture commands require `ffmpeg` on `PATH`, or its location in `FFMPEG`.
 
 ```bash
-npm run capture:hero       # stage one deliberate conflict, record the next 10 s
+npm run capture:hero       # stage the hold and five sequential landings
 npm run capture:explainers # rebuild all five staged technical GIFs
 ```
 
-Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=10`,
-`HERO_FPS=12`, and `HERO_CONFLICT_SECONDS=4.5`. The simulator and controller
-still execute every 1/60-second tick; each rendered frame advances exactly five
-simulation ticks. Wall-clock browser throttling therefore cannot stretch the
-displayed timeline. All five settings can be overridden through environment
-variables.
+Hero defaults are seed `101`, `TARGET_HOURS=0`, `CAPTURE_SECONDS=18`, and
+`HERO_FPS=12`. The simulator still executes every 1/60-second tick; each
+rendered frame advances exactly five simulation ticks. Wall-clock browser
+throttling therefore cannot stretch the displayed timeline. All four settings
+can be overridden through environment variables.
 
 The game is by [@lapunen](https://github.com/lapunen). The runner does not enter
 a player name, force game over, or submit a leaderboard score.

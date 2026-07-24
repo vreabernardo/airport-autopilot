@@ -12,11 +12,10 @@ const projectDir = process.env.PROJECT_DIR || path.dirname(fileURLToPath(import.
 const outputDir = process.env.HERO_OUTPUT_DIR || path.join(projectDir, 'docs');
 const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'airport-hero-'));
 const targetSeconds = Number(process.env.TARGET_HOURS ?? 0) * 60 * 60;
-const captureSeconds = Number(process.env.CAPTURE_SECONDS || 10);
+const captureSeconds = Number(process.env.CAPTURE_SECONDS || 18);
 const seedValue = Number(process.env.SEED || 101) >>> 0;
-const outputName = process.env.HERO_OUTPUT || 'strategic-conflict-cinematic.gif';
+const outputName = process.env.HERO_OUTPUT || 'holding-pattern-cinematic.gif';
 const outputFps = Math.max(1, Math.min(30, Number(process.env.HERO_FPS) || 12));
-const conflictSeconds = Number(process.env.HERO_CONFLICT_SECONDS || 4.5);
 const solverSource = fs.readFileSync(path.join(projectDir, 'autopilot.js'), 'utf8');
 
 fs.mkdirSync(outputDir, { recursive: true });
@@ -72,43 +71,13 @@ try {
   // Headless requestAnimationFrame can be heavily throttled. Freeze its update
   // hook and advance the simulation explicitly so every encoded second contains
   // exactly 60 controller/game ticks regardless of wall-clock capture speed.
-  const captureSetup = await page.evaluate(conflictSeconds => {
+  const captureSetup = await page.evaluate(({ captureSeconds }) => {
     const game = window.__game;
     const runwayFor = kind => game.map.runways.find(runway => runway.color === kind);
-    const velocityTo = (aircraft, point) => {
-      const angle = Math.atan2(point.y - aircraft.pos.y, point.x - aircraft.pos.x);
-      return {
-        x: Math.cos(angle) * aircraft.spec.speed,
-        y: Math.sin(angle) * aircraft.spec.speed,
-      };
-    };
-    const currentVelocity = aircraft => {
-      const point = aircraft.path?.[0];
-      if (point) return velocityTo(aircraft, point);
-      return {
-        x: Math.cos(aircraft.heading) * aircraft.spec.speed,
-        y: Math.sin(aircraft.heading) * aircraft.spec.speed,
-      };
-    };
-    const pairClearance = (a, av, b, bv, horizon = 8) => {
-      const px = b.pos.x - a.pos.x;
-      const py = b.pos.y - a.pos.y;
-      const vx = bv.x - av.x;
-      const vy = bv.y - av.y;
-      const vv = vx * vx + vy * vy;
-      const time = vv < 1e-8 ? 0 : Math.max(0, Math.min(horizon, -(px * vx + py * vy) / vv));
-      return {
-        time,
-        clearance: Math.hypot(px + vx * time, py + vy * time)
-          - a.spec.radius - b.spec.radius,
-      };
-    };
     const samples = {};
-    for (let tick = 0; tick < 60 * 3 * 60
-        && (!samples.blue || !samples.yellow || !samples.red); tick++) {
+    for (let tick = 0; tick < 60 * 3 * 60 && !samples.blue; tick++) {
       for (const aircraft of game.aircraft) {
-        if (aircraft.state === 'flying'
-            && (aircraft.kind === 'blue' || aircraft.kind === 'yellow' || aircraft.kind === 'red')) {
+        if (aircraft.state === 'flying' && aircraft.kind === 'blue') {
           samples[aircraft.kind] ||= {
             ...aircraft,
             pos: { ...aircraft.pos },
@@ -119,80 +88,158 @@ try {
       }
       game.step(1 / 60);
     }
-    if (!samples.blue || !samples.yellow || !samples.red) {
-      throw new Error('Could not load native blue, yellow, and red aircraft assets.');
+    if (!samples.blue) {
+      throw new Error('Could not load a native blue aircraft asset.');
     }
     while (game.elapsed < 100) game.step(1 / 60);
-    const conflictPoint = { x: 0, y: 0 };
-    const strategicPosition = (sample, seconds) => {
-      const runway = runwayFor(sample.kind);
-      const dx = conflictPoint.x - runway.approach.x;
-      const dy = conflictPoint.y - runway.approach.y;
-      const length = Math.hypot(dx, dy);
-      return {
-        x: conflictPoint.x + dx / length * sample.spec.speed * seconds,
-        y: conflictPoint.y + dy / length * sample.spec.speed * seconds,
-      };
+    const runway = runwayFor('blue');
+    const hold = {
+      center: { x: -3, y: -1 },
+      radiusX: 15,
+      radiusY: 23,
+      gatePhase: Math.PI * 1.5,
     };
-    const stageAircraft = (sample, id, age, seconds) => {
-      const pos = strategicPosition(sample, seconds);
-      const runway = runwayFor(sample.kind);
+    const pointOnHold = phase => ({
+      x: hold.center.x + Math.cos(phase) * hold.radiusX,
+      y: hold.center.y + Math.sin(phase) * hold.radiusY,
+    });
+    const phaseSpeed = phase => samples.blue.spec.speed / Math.hypot(
+      hold.radiusX * Math.sin(phase),
+      hold.radiusY * Math.cos(phase),
+    );
+    const rewindPhase = (phase, seconds) => {
+      const steps = Math.ceil(seconds * 60);
+      for (let step = 0; step < steps; step++) {
+        phase -= phaseSpeed(phase) * seconds / steps;
+      }
+      return phase;
+    };
+    const arrivalPlan = Array.from({ length: 5 }, (_, index) => {
+      const releaseAt = 1 + index * 3.1;
       return {
-        ...sample,
+        releaseAt,
+        phase: rewindPhase(hold.gatePhase, releaseAt),
+        age: index,
+      };
+    });
+    const stageAircraft = (plan, id) => {
+      const pos = pointOnHold(plan.phase);
+      const tangent = Math.atan2(
+        hold.radiusY * Math.cos(plan.phase),
+        -hold.radiusX * Math.sin(plan.phase),
+      );
+      return {
+        ...samples.blue,
         id,
         pos,
-        heading: Math.atan2(runway.approach.y - pos.y, runway.approach.x - pos.x),
-        path: [{ ...runway.approach }],
+        heading: tangent,
+        path: [{
+          x: pos.x + Math.cos(tangent) * 100,
+          y: pos.y + Math.sin(tangent) * 100,
+        }],
         target: null,
         state: 'flying',
-        age,
+        age: plan.age,
         landProgress: 0,
         takeoffProgress: 0,
       };
     };
-    const waveSeconds = [conflictSeconds, conflictSeconds + 1];
-    const staged = waveSeconds.flatMap((seconds, waveIndex) =>
-      ['blue', 'yellow', 'red'].map((kind, kindIndex) =>
-        stageAircraft(samples[kind], 9801 + waveIndex * 3 + kindIndex,
-          6 - waveIndex * 3 - kindIndex, seconds)));
+    const staged = arrivalPlan.map((plan, index) => stageAircraft(plan, 9801 + index));
     game.spawningEnabled = false;
     game.spawnWarnings.splice(0, game.spawnWarnings.length);
     game.aircraft.splice(0, game.aircraft.length, ...staged);
     game.drawing = null;
     game.hoveredId = null;
     game.hoveredRunwayId = null;
-    window.__airportControlDirect(game);
-    const directConflicts = [];
-    let actualClearance = Number.POSITIVE_INFINITY;
-    for (let firstIndex = 0; firstIndex < staged.length; firstIndex++) {
-      for (let secondIndex = firstIndex + 1; secondIndex < staged.length; secondIndex++) {
-        const first = staged[firstIndex];
-        const second = staged[secondIndex];
-        const direct = pairClearance(
-          first, velocityTo(first, runwayFor(first.kind).approach),
-          second, velocityTo(second, runwayFor(second.kind).approach),
-        );
-        if (direct.clearance < 0) {
-          directConflicts.push({ ids: [first.id, second.id], clearance: direct.clearance });
+    window.__apStop = true;
+    const stagedAt = game.elapsed;
+    const holdState = new Map(staged.map((aircraft, index) => [
+      aircraft.id,
+      {
+        aircraft,
+        phase: arrivalPlan[index].phase,
+        releaseAt: arrivalPlan[index].releaseAt,
+        released: false,
+      },
+    ]));
+    const nativeStep = game.step.bind(game);
+    game.step = function stepWithHoldingPattern(dt) {
+      const heroElapsed = this.elapsed - stagedAt;
+      const heldNext = [];
+      for (const entry of holdState.values()) {
+        const aircraft = this.aircraft.find(candidate => candidate.id === entry.aircraft.id);
+        if (!aircraft || entry.released) continue;
+        if (heroElapsed + dt >= entry.releaseAt) {
+          entry.released = true;
+          const gate = pointOnHold(hold.gatePhase);
+          window.__heroAudit.releaseEvents.push({
+            id: aircraft.id,
+            time: heroElapsed + dt,
+            gateDeviation: Math.hypot(aircraft.pos.x - gate.x, aircraft.pos.y - gate.y),
+          });
+          aircraft.target = runway;
+          aircraft.path = [{ ...runway.approach }];
+          aircraft.heading = Math.atan2(
+            runway.approach.y - aircraft.pos.y,
+            runway.approach.x - aircraft.pos.x,
+          );
+          continue;
         }
-        actualClearance = Math.min(actualClearance, pairClearance(
-          first, currentVelocity(first), second, currentVelocity(second),
-        ).clearance);
+        entry.phase += phaseSpeed(entry.phase) * dt;
+        const next = pointOnHold(entry.phase);
+        const holdSpeed = Math.hypot(
+          next.x - aircraft.pos.x,
+          next.y - aircraft.pos.y,
+        ) / dt;
+        window.__heroAudit.holdSpeedMin = Math.min(
+          window.__heroAudit.holdSpeedMin,
+          holdSpeed,
+        );
+        window.__heroAudit.holdSpeedMax = Math.max(
+          window.__heroAudit.holdSpeedMax,
+          holdSpeed,
+        );
+        const tangent = Math.atan2(
+          hold.radiusY * Math.cos(entry.phase),
+          -hold.radiusX * Math.sin(entry.phase),
+        );
+        aircraft.path = [{
+          x: aircraft.pos.x + Math.cos(tangent) * 100,
+          y: aircraft.pos.y + Math.sin(tangent) * 100,
+        }];
+        heldNext.push({ aircraft, next, tangent });
       }
-    }
-    if (directConflicts.length < 6 || actualClearance < 2) {
-      throw new Error(`Strategic scene failed solver audit: direct conflicts=${directConflicts.length}, actual=${actualClearance}.`);
-    }
+      const landingsBefore = this.score.landings;
+      const result = nativeStep(dt);
+      if (this.score.landings > landingsBefore) {
+        window.__heroAudit.landingEvents.push({
+          time: this.elapsed - stagedAt,
+          count: this.score.landings - landingsBefore,
+        });
+      }
+      for (const { aircraft, next, tangent } of heldNext) {
+        if (!this.aircraft.includes(aircraft) || aircraft.state !== 'flying') continue;
+        aircraft.pos = next;
+        aircraft.heading = tangent;
+        aircraft.path = [{
+          x: next.x + Math.cos(tangent) * 100,
+          y: next.y + Math.sin(tangent) * 100,
+        }];
+      }
+      return result;
+    };
     const focus = {
       ids: staged.map(aircraft => aircraft.id),
-      primaryIds: staged.slice(0, 3).map(aircraft => aircraft.id),
       staged: true,
-      conflictPoint,
-      conflictSeconds,
-      waveSeconds,
+      captureControl: 'deterministic racetrack hold with timed runway releases',
+      runwayKind: runway.color,
+      runway: {
+        approach: { ...runway.approach },
+        end: { ...runway.end },
+      },
+      hold,
+      arrivalPlan,
       airborneCount: staged.length,
-      directConflicts,
-      actualClearance,
       positions: staged.map(aircraft => ({
         id: aircraft.id,
         kind: aircraft.kind,
@@ -251,29 +298,6 @@ try {
       const t = Math.max(0, Math.min(1, value));
       return t * t * (3 - 2 * t);
     };
-    const line = (from, to, color, width = 3, dash = []) => {
-      context.beginPath();
-      context.setLineDash(dash);
-      context.moveTo(Math.round(from.x) + .5, Math.round(from.y) + .5);
-      context.lineTo(Math.round(to.x) + .5, Math.round(to.y) + .5);
-      context.strokeStyle = color;
-      context.lineWidth = width;
-      context.lineCap = 'butt';
-      context.stroke();
-      context.setLineDash([]);
-    };
-    const arrow = (from, to, color, width = 4, dash = []) => {
-      line(from, to, color, width, dash);
-      const angle = Math.atan2(to.y - from.y, to.x - from.x);
-      const size = 10 + width;
-      context.beginPath();
-      context.moveTo(to.x, to.y);
-      context.lineTo(to.x - Math.cos(angle - .48) * size, to.y - Math.sin(angle - .48) * size);
-      context.lineTo(to.x - Math.cos(angle + .48) * size, to.y - Math.sin(angle + .48) * size);
-      context.closePath();
-      context.fillStyle = color;
-      context.fill();
-    };
     const label = (text, x, y, color = '#f5edcf', align = 'left', size = 15) => {
       context.fillStyle = color;
       context.font = `700 ${size}px Hind, ui-sans-serif, sans-serif`;
@@ -281,32 +305,19 @@ try {
       context.fillText(text, Math.round(x), Math.round(y));
       context.textAlign = 'left';
     };
-    const reticle = (point, color, time, radius = 28) => {
-      const pulse = Math.round((Math.sin(time * Math.PI * 3) + 1) * 3);
-      const outer = radius + pulse;
-      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-        const corner = { x: point.x + sx * outer, y: point.y + sy * outer };
-        line(corner, { x: corner.x - sx * 12, y: corner.y }, color, 3);
-        line(corner, { x: corner.x, y: corner.y - sy * 12 }, color, 3);
-      }
-    };
-    const predictedPair = (a, av, b, bv) => {
-      const prediction = pairClearance(a, av, b, bv);
-      return {
-        ...prediction,
-        a: { x: a.pos.x + av.x * prediction.time, y: a.pos.y + av.y * prediction.time },
-        b: { x: b.pos.x + bv.x * prediction.time, y: b.pos.y + bv.y * prediction.time },
-      };
-    };
     const sceneryLayer = viewport.scene.getObjectByName('airport-scenery');
     const panelLabels = ['Landings', 'Departures', 'Pace', 'Duration'];
     window.__heroAudit = {
-      directFrames: 0,
-      coordinatedFrames: 0,
-      missingFocusFrames: 0,
+      holdingFrames: 0,
+      landingFrames: 0,
+      landingsCompleted: 0,
       returnedHomeFrames: 0,
       minPhysicalClearance: Number.POSITIVE_INFINITY,
       minPhysicalPair: null,
+      holdSpeedMin: Number.POSITIVE_INFINITY,
+      holdSpeedMax: 0,
+      releaseEvents: [],
+      landingEvents: [],
       fullSceneryVisible: Boolean(sceneryLayer?.visible),
       performancePanelVisible: panelLabels.every(text =>
         [...document.querySelectorAll('body *')].some(element =>
@@ -314,30 +325,36 @@ try {
           && getComputedStyle(element).visibility !== 'hidden'
           && getComputedStyle(element).display !== 'none')),
     };
+    const startLandings = game.score.landings;
     window.__renderHero = time => {
       const aircraft = focus.ids
         .map(id => game.aircraft.find(candidate => candidate.id === id))
         .filter(Boolean);
-      const primary = focus.primaryIds
-        .map(id => game.aircraft.find(candidate => candidate.id === id))
-        .filter(Boolean);
+      const flying = aircraft.filter(item => item.state === 'flying');
+      const landing = aircraft.filter(item => item.state === 'landing');
+      const completed = game.score.landings - startLandings;
+      window.__heroAudit.landingsCompleted = completed;
+      if (landing.length) window.__heroAudit.landingFrames++;
+      else if (flying.length >= 2) window.__heroAudit.holdingFrames++;
       let focusAmount = 0;
-      if (time >= .4 && time < 1) focusAmount = smooth((time - .4) / .6);
-      else if (time >= 1 && time < 5.4) focusAmount = 1;
-      else if (time >= 5.4 && time < 7.2) focusAmount = 1 - smooth((time - 5.4) / 1.8);
-      if (time >= 1 && time < 5.4) {
-        if (aircraft.length === focus.ids.length) {
-          if (time < 2.6) window.__heroAudit.directFrames++;
-          else window.__heroAudit.coordinatedFrames++;
-        } else {
-          window.__heroAudit.missingFocusFrames++;
-        }
+      if (time >= .5 && time < 1.5) focusAmount = smooth((time - .5));
+      else if (time >= 1.5 && time < captureSeconds - 2) focusAmount = 1;
+      else if (time >= captureSeconds - 2) {
+        focusAmount = 1 - smooth((time - (captureSeconds - 2)) / 2);
       }
-      if (time >= 7.2 && focusAmount < 1e-6) window.__heroAudit.returnedHomeFrames++;
+      if (time >= captureSeconds - 1 && focusAmount < .55) {
+        window.__heroAudit.returnedHomeFrames++;
+      }
       if (aircraft.length) {
+        const runwayMidpoint = {
+          x: (focus.runway.approach.x + focus.runway.end.x) / 2,
+          y: (focus.runway.approach.y + focus.runway.end.y) / 2,
+        };
         window.__heroLastFocus = {
-          x: aircraft.reduce((sum, item) => sum + item.pos.x, 0) / aircraft.length,
-          y: aircraft.reduce((sum, item) => sum + item.pos.y, 0) / aircraft.length,
+          x: (aircraft.reduce((sum, item) => sum + item.pos.x, 0)
+            + runwayMidpoint.x * 2) / (aircraft.length + 2),
+          y: (aircraft.reduce((sum, item) => sum + item.pos.y, 0)
+            + runwayMidpoint.y * 2) / (aircraft.length + 2),
         };
       }
       const midpoint = window.__heroLastFocus || home;
@@ -346,10 +363,10 @@ try {
         home.x + (midpoint.x - home.x) * focusAmount,
         home.y + (midpoint.y - home.y) * focusAmount,
       );
-      viewport.camera.zoom = home.zoom + (2.55 - home.zoom) * focusAmount;
+      viewport.camera.zoom = home.zoom + (2.05 - home.zoom) * focusAmount;
       viewport.applyCamera();
       viewport.camera.updateProjectionMatrix();
-      const focusOnly = time >= .4 && time < 7.2 && aircraft.length;
+      const focusOnly = time >= .5 && time < captureSeconds - 1 && aircraft.length;
       window.__heroRenderIds = focusOnly ? new Set(aircraft.map(item => item.id)) : null;
       airportRenderer.syncAircraft(
         focusOnly ? aircraft : game.aircraft,
@@ -370,80 +387,11 @@ try {
       context.lineWidth = 2;
       context.strokeRect(760, 18, 414, 82);
       label('AUTONOMOUS AIRSPACE · 60 HZ', 780, 47, '#f5edcf', 'left', 15);
-      let phase = 'SIX AIRCRAFT · TWO IMPACT WAVES';
-      if (time >= .4 && time < 1) phase = 'CLOSING ON THE CONFLICT';
-      else if (time >= 1 && time < 2.6) phase = 'DIRECT HEADINGS · CERTAIN IMPACT';
-      else if (time >= 2.6 && time < 4.7) phase = 'CONTROLLER BREAKS SYMMETRY';
-      else if (time >= 4.7 && time < 7.2) phase = 'CLOSE PASS · CONFLICT CLEARED';
-      else if (time >= 7.2) phase = 'AIRSPACE SECURE';
+      let phase = 'BLUE RUNWAY · FIVE ARRIVALS';
+      if (landing.length) phase = `CLEARED TO LAND · ${landing.length} ON FINAL`;
+      else if (completed) phase = `${completed} LANDED · ${flying.length} IN SEQUENCE`;
+      else if (time >= 1.5) phase = 'HOLDING PATTERN · ARRIVAL SEQUENCE';
       label(phase, 780, 79, '#43d7e5', 'left', 22);
-
-      if (primary.length !== 3 || aircraft.length !== focus.ids.length
-          || time < .4 || time >= 5.6) return;
-      const colorFor = item => ({
-        blue: '#43d7e5',
-        yellow: '#ffd21c',
-        red: '#ff6174',
-      })[item.kind] || '#f5edcf';
-      for (const [index, item] of aircraft.entries()) {
-        reticle(viewport.worldToScreen(item.pos), colorFor(item), time + index * .13, 24);
-      }
-      if (time < 2.6) {
-        const velocities = primary.map(item =>
-          velocityTo(item, runwayFor(item.kind).approach));
-        const prediction = predictedPair(primary[0], velocities[0], primary[1], velocities[1]);
-        for (let index = 0; index < primary.length; index++) {
-          const item = primary[index];
-          arrow(
-            viewport.worldToScreen(item.pos),
-            viewport.worldToScreen({
-              x: item.pos.x + velocities[index].x * prediction.time,
-              y: item.pos.y + velocities[index].y * prediction.time,
-            }),
-            colorFor(item), 6, [10, 6],
-          );
-        }
-        const collision = viewport.worldToScreen({
-          x: (prediction.a.x + prediction.b.x) / 2,
-          y: (prediction.a.y + prediction.b.y) / 2,
-        });
-        const ring = 18 + ((time * 20) % 18);
-        context.beginPath();
-        context.arc(collision.x, collision.y, ring, 0, Math.PI * 2);
-        context.strokeStyle = '#ff4f91';
-        context.lineWidth = 4;
-        context.stroke();
-        line({ x: collision.x - 15, y: collision.y - 15 },
-          { x: collision.x + 15, y: collision.y + 15 }, '#ff4f91', 5);
-        line({ x: collision.x + 15, y: collision.y - 15 },
-          { x: collision.x - 15, y: collision.y + 15 }, '#ff4f91', 5);
-        label(`IMPACT IN ${prediction.time.toFixed(1)} S`,
-          collision.x, collision.y - 42, '#ff4f91', 'center', 18);
-      } else {
-        for (const item of aircraft) {
-          const velocity = currentVelocity(item);
-          arrow(
-            viewport.worldToScreen(item.pos),
-            viewport.worldToScreen({
-              x: item.pos.x + velocity.x * 2.2,
-              y: item.pos.y + velocity.y * 2.2,
-            }),
-            colorFor(item), 5,
-          );
-        }
-        let separation = Number.POSITIVE_INFINITY;
-        for (let firstIndex = 0; firstIndex < aircraft.length; firstIndex++) {
-          for (let secondIndex = firstIndex + 1; secondIndex < aircraft.length; secondIndex++) {
-            separation = Math.min(separation, predictedPair(
-              aircraft[firstIndex], currentVelocity(aircraft[firstIndex]),
-              aircraft[secondIndex], currentVelocity(aircraft[secondIndex]),
-            ).clearance);
-          }
-        }
-        const top = Math.min(...aircraft.map(item => viewport.worldToScreen(item.pos).y));
-        label(`EDGE CLEARANCE ${Math.max(0, separation).toFixed(1)}`,
-          innerWidth / 2, top - 56, '#43d7e5', 'center', 16);
-      }
     };
     window.__heroFocusIds = [...focus.ids];
     window.__captureAircraft = game.aircraft;
@@ -452,7 +400,7 @@ try {
       aircraft.state === 'flying' || aircraft.state === 'departing' || aircraft.state === 'landing');
     game.spawnWarnings = [];
     return { start: game.elapsed, focus };
-  }, conflictSeconds);
+  }, { captureSeconds });
   const capturedFrames = Math.round(captureSeconds * outputFps);
   let completedSteps = 0;
   for (let index = 0; index < capturedFrames; index++) {
@@ -467,7 +415,7 @@ try {
         window.__game.step(1 / 60);
         const focus = window.__heroFocusIds
           .map(id => game.aircraft.find(aircraft => aircraft.id === id))
-          .filter(Boolean);
+          .filter(aircraft => aircraft?.state === 'flying' || aircraft?.state === 'departing');
         for (let firstIndex = 0; firstIndex < focus.length; firstIndex++) {
           for (let secondIndex = firstIndex + 1; secondIndex < focus.length; secondIndex++) {
             const first = focus[firstIndex];
@@ -507,13 +455,24 @@ try {
   if (finalState.heroAudit.minPhysicalClearance < 2) {
     throw new Error(`Hero audit failed: closest pass was ${finalState.heroAudit.minPhysicalClearance}.`);
   }
-  if (captureSeconds >= 6.5) {
-    if (finalState.heroAudit.missingFocusFrames > 0
-        || finalState.heroAudit.directFrames < outputFps
-        || finalState.heroAudit.coordinatedFrames < outputFps) {
-      throw new Error(`Hero audit failed: conflict continuity ${JSON.stringify(finalState.heroAudit)}.`);
+  if (captureSeconds >= 12) {
+    const releaseEvents = finalState.heroAudit.releaseEvents;
+    const landingEvents = finalState.heroAudit.landingEvents;
+    const maxGateDeviation = Math.max(...releaseEvents.map(event => event.gateDeviation));
+    const landingGaps = landingEvents.slice(1).map((event, index) =>
+      event.time - landingEvents[index].time);
+    if (finalState.heroAudit.holdingFrames < outputFps * 2
+        || finalState.heroAudit.landingFrames < 1
+        || finalState.heroAudit.landingsCompleted !== 5
+        || releaseEvents.length !== 5
+        || landingEvents.reduce((sum, event) => sum + event.count, 0) !== 5
+        || maxGateDeviation > .5
+        || finalState.heroAudit.holdSpeedMin < 7.9
+        || finalState.heroAudit.holdSpeedMax > 8.1
+        || landingGaps.some(gap => gap < 2.5)) {
+      throw new Error(`Hero audit failed: arrival sequence ${JSON.stringify(finalState.heroAudit)}.`);
     }
-    if (finalState.heroAudit.returnedHomeFrames < outputFps) {
+    if (finalState.heroAudit.returnedHomeFrames < outputFps / 2) {
       throw new Error('Hero audit failed: camera did not return to the full airspace.');
     }
   }

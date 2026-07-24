@@ -1,0 +1,206 @@
+{
+  "seed": 101,
+  "capturedFrames": 216,
+  "focus": {
+    "ids": [
+      9801,
+      9802,
+      9803,
+      9804,
+      9805
+    ],
+    "staged": true,
+    "captureControl": "deterministic racetrack hold with timed runway releases",
+    "runwayKind": "blue",
+    "runway": {
+      "approach": {
+        "x": 22,
+        "y": -40
+      },
+      "end": {
+        "x": 22,
+        "y": 24
+      }
+    },
+    "hold": {
+      "center": {
+        "x": -3,
+        "y": -1
+      },
+      "radiusX": 15,
+      "radiusY": 23,
+      "gatePhase": 4.71238898038469
+    },
+    "arrivalPlan": [
+      {
+        "releaseAt": 1,
+        "phase": 4.2051371335596475,
+        "age": 0
+      },
+      {
+        "releaseAt": 4.1,
+        "phase": 3.0261626671295234,
+        "age": 1
+      },
+      {
+        "releaseAt": 7.2,
+        "phase": 1.7529211737079788,
+        "age": 2
+      },
+      {
+        "releaseAt": 10.3,
+        "phase": 0.35663586918353846,
+        "age": 3
+      },
+      {
+        "releaseAt": 13.4,
+        "phase": -0.7655927586210294,
+        "age": 4
+      }
+    ],
+    "airborneCount": 5,
+    "positions": [
+      {
+        "id": 9801,
+        "kind": "blue",
+        "pos": {
+          "x": -10.286654563075714,
+          "y": -21.103904312045984
+        }
+      },
+      {
+        "id": 9802,
+        "kind": "blue",
+        "pos": {
+          "x": -17.90018029439705,
+          "y": 1.6489979538353094
+        }
+      },
+      {
+        "id": 9803,
+        "kind": "blue",
+        "pos": {
+          "x": -5.716795273942151,
+          "y": 21.619604417357166
+        }
+      },
+      {
+        "id": 9804,
+        "kind": "blue",
+        "pos": {
+          "x": 11.056149331550657,
+          "y": 7.029846628583551
+        }
+      },
+      {
+        "id": 9805,
+        "kind": "blue",
+        "pos": {
+          "x": 7.814575851763694,
+          "y": -16.93818309713038
+        }
+      }
+    ]
+  },
+  "ok": true,
+  "phase": "playing",
+  "elapsed": 118.01666666666125,
+  "landings": 26,
+  "departures": 1,
+  "airborne": 0,
+  "total": 5,
+  "warnings": 0,
+  "bounds": {
+    "minX": -39.87250908482147,
+    "maxX": 39.87250908482153,
+    "minY": -41.776872340890876,
+    "maxY": 41.77687234089083,
+    "corners": [
+      {
+        "x": -39.87250908482147,
+        "y": 14.340904712088388
+      },
+      {
+        "x": -7.083181918691736,
+        "y": 41.77687234089083
+      },
+      {
+        "x": 39.87250908482153,
+        "y": -14.340904712088431
+      },
+      {
+        "x": 7.083181918691778,
+        "y": -41.776872340890876
+      }
+    ]
+  },
+  "stats": {
+    "frames": 6001,
+    "shieldInterventions": 0
+  },
+  "stop": true,
+  "heroAudit": {
+    "holdingFrames": 166,
+    "landingFrames": 3,
+    "landingsCompleted": 5,
+    "returnedHomeFrames": 13,
+    "minPhysicalClearance": 13.389808918470713,
+    "minPhysicalPair": [
+      9801,
+      9805
+    ],
+    "holdSpeedMin": 7.986530482123795,
+    "holdSpeedMax": 8.013474580949968,
+    "releaseEvents": [
+      {
+        "id": 9801,
+        "time": 1.0166666666666098,
+        "gateDeviation": 0.018449529515076665
+      },
+      {
+        "id": 9802,
+        "time": 4.1166666666664335,
+        "gateDeviation": 0.05648120047015528
+      },
+      {
+        "id": 9803,
+        "time": 7.216666666666257,
+        "gateDeviation": 0.0028911395558758953
+      },
+      {
+        "id": 9804,
+        "time": 10.316666666666082,
+        "gateDeviation": 0.05215021375141226
+      },
+      {
+        "id": 9805,
+        "time": 13.416666666665906,
+        "gateDeviation": 0.03546501824836091
+      }
+    ],
+    "landingEvents": [
+      {
+        "time": 4.649999999999736,
+        "count": 1
+      },
+      {
+        "time": 7.766666666666225,
+        "count": 1
+      },
+      {
+        "time": 10.849999999999383,
+        "count": 1
+      },
+      {
+        "time": 13.966666666665873,
+        "count": 1
+      },
+      {
+        "time": 17.066666666665697,
+        "count": 1
+      }
+    ],
+    "fullSceneryVisible": true,
+    "performancePanelVisible": true
+  }
+}
